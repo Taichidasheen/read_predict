@@ -6,7 +6,6 @@ import (
 	"github.com/biogo/hts/sam"
 	"github.com/montanaflynn/stats"
 	"log"
-	"sort"
 	"strings"
 )
 
@@ -39,7 +38,7 @@ func NewLocateWorker(record *sam.Record, cgListMap map[string][]int, resultChan 
 func (w *LocateWorker) Task(num int) {
 	record := w.record
 	radius := w.radius
-	//winsize := 2*radius + 1
+	winsize := 2*radius + 1
 	scaleFlag := w.scaleFlag
 	if !isSecondary(record.Flags) && !isSupplementary(record.Flags) && int(record.MapQ) > w.mappingQ && matchingRatio(record) >= 0.85 {
 		recordTag, err := extractRecordTag(record)
@@ -81,6 +80,7 @@ func (w *LocateWorker) Task(num int) {
 						posOnRead := cpgPosOnRead[cpg]
 						//log.Printf("readName:%s, cpg:%d, posOnRead:%d", readName, cpg, posOnRead)
 						var fIPDList, fPWList, rIPDList, rPWList []float64
+						var numfIPDList, numfPWList, numrIPDList, numrPWList []float64
 						var seqList []byte
 
 						//this hifi read aligned to Ref_R_strand
@@ -92,11 +92,13 @@ func (w *LocateWorker) Task(num int) {
 							leftRefFCOnFList := refFCOnFList - radius - 1
 							rightRefFCOnFList := refFCOnFList + radius
 							if leftRefFCOnFList > 0 && rightRefFCOnFList < readQueryLength {
+								numfIPDList, _ = getkineticswin(readFiList[leftRefFCOnFList:rightRefFCOnFList], false)
 								fIPDList, err = getkineticswin(readFiList[leftRefFCOnFList:rightRefFCOnFList], scaleFlag)
 								if err != nil {
 									log.Printf("getkineticswin err:%+v", err)
 									continue
 								}
+								numfPWList, _ = getkineticswin(readFpList[leftRefFCOnFList:rightRefFCOnFList], false)
 								fPWList, err = getkineticswin(readFpList[leftRefFCOnFList:rightRefFCOnFList], scaleFlag)
 								if err != nil {
 									log.Printf("getkineticswin err:%+v", err)
@@ -107,14 +109,16 @@ func (w *LocateWorker) Task(num int) {
 							//For subreads mapped to Ref_F_strand, which carrying information when syn the complementary R_strand, key 'R' #
 							//information is stored in ri, rp tags
 							refRCOnRList := posOnRead + 1
-							leftRefRCOnRList := refRCOnRList - radius + 1
+							leftRefRCOnRList := refRCOnRList - radius - 1
 							rightRefRCOnRList := refRCOnRList + radius
 							if leftRefRCOnRList > 0 && rightRefRCOnRList < readQueryLength {
+								numrIPDList, _ = getkineticswin(readRiList[leftRefRCOnRList:rightRefRCOnRList], false)
 								rIPDList, err = getkineticswin(readRiList[leftRefRCOnRList:rightRefRCOnRList], scaleFlag)
 								if err != nil {
 									log.Printf("getkineticswin err:%+v", err)
 									continue
 								}
+								numrPWList, _ = getkineticswin(readRpList[leftRefRCOnRList:rightRefRCOnRList], false)
 								rPWList, err = getkineticswin(readRpList[leftRefRCOnRList:rightRefRCOnRList], scaleFlag)
 								if err != nil {
 									log.Printf("getkineticswin err:%+v", err)
@@ -123,8 +127,19 @@ func (w *LocateWorker) Task(num int) {
 								seqList = readSeqList[leftRefRCOnRList : rightRefRCOnRList+1]
 								rIPDList = reverseSlice(rIPDList)
 								rPWList = reverseSlice(rPWList)
+								numrIPDList = reverseSlice(numrIPDList)
+								numrPWList = reverseSlice(numrPWList)
 
 							}
+							/*if zmwname == "m64267e_230418_135811_101517168" {
+								log.Printf("reverse m64267e_230418_135811_101517168 cpg:%d, posOnRead:%d, readQueryLength:%d",
+									cpg, posOnRead, readQueryLength)
+								log.Printf("reverse m64267e_230418_135811_101517168 leftRefFCOnFList:%d, rightRefFCOnFList:%d",
+									leftRefFCOnFList, rightRefFCOnFList)
+								log.Printf("reverse m64267e_230418_135811_101517168 leftRefRCOnRList:%d, rightRefRCOnRList:%d, seqList:%s",
+									leftRefRCOnRList, rightRefRCOnRList, string(seqList))
+							}*/
+
 						} else {
 							//(1)
 							//For subreads mapped to Ref_F_strand, which carrying information when syn the complementary R_strand, key 'R' #
@@ -133,11 +148,13 @@ func (w *LocateWorker) Task(num int) {
 							leftRefRCOnFList := refRCOnFList - radius - 1
 							rightRefRCOnFList := refRCOnFList + radius
 							if leftRefRCOnFList > 0 && rightRefRCOnFList < readQueryLength {
+								numrIPDList, err = getkineticswin(readFiList[leftRefRCOnFList:rightRefRCOnFList], false)
 								rIPDList, err = getkineticswin(readFiList[leftRefRCOnFList:rightRefRCOnFList], scaleFlag)
 								if err != nil {
 									log.Printf("getkineticswin err:%+v", err)
 									continue
 								}
+								numrPWList, err = getkineticswin(readFpList[leftRefRCOnFList:rightRefRCOnFList], false)
 								rPWList, err = getkineticswin(readFpList[leftRefRCOnFList:rightRefRCOnFList], scaleFlag)
 								if err != nil {
 									log.Printf("getkineticswin err:%+v", err)
@@ -153,57 +170,68 @@ func (w *LocateWorker) Task(num int) {
 							leftRefFCOnRList := refFCOnRList - radius - 1
 							rightRefFCOnRList := refFCOnRList + radius
 							if leftRefFCOnRList > 0 && rightRefFCOnRList < readQueryLength {
-								fIPDList, err = getkineticswin(UInt8Slice(readRiList[leftRefFCOnRList:rightRefFCOnRList]), scaleFlag)
+								numfIPDList, _ = getkineticswin(readRiList[leftRefFCOnRList:rightRefFCOnRList], false)
+								fIPDList, err = getkineticswin(readRiList[leftRefFCOnRList:rightRefFCOnRList], scaleFlag)
 								if err != nil {
 									log.Printf("getkineticswin err:%+v", err)
 									continue
 								}
-								fPWList, err = getkineticswin(UInt8Slice(readRpList[leftRefFCOnRList:rightRefFCOnRList]), scaleFlag)
+								numfPWList, _ = getkineticswin(readRpList[leftRefFCOnRList:rightRefFCOnRList], false)
+								fPWList, err = getkineticswin(readRpList[leftRefFCOnRList:rightRefFCOnRList], scaleFlag)
 								if err != nil {
 									log.Printf("getkineticswin err:%+v", err)
 									continue
 								}
+
 								fIPDList = reverseSlice(fIPDList)
 								fPWList = reverseSlice(fPWList)
+								if zmwname == "m64267e_230418_135811_144902294" {
+									log.Printf("before reverse numfIPDList:%v", numfIPDList)
+									log.Printf("before reverse numfPWList:%v", numfPWList)
+								}
+								numfIPDList = reverseSlice(numfIPDList)
+								numfPWList = reverseSlice(numfPWList)
+								if zmwname == "m64267e_230418_135811_144902294" {
+									log.Printf("after reverse numfIPDList:%v", numfIPDList)
+									log.Printf("after reverse numfPWList:%v", numfPWList)
+								}
 							}
+							if zmwname == "m64267e_230418_135811_144902294" {
+								log.Printf("m64267e_230418_135811_144902294 readRiList:%v", readRiList)
+								log.Printf("m64267e_230418_135811_144902294 readRpList:%v", readRpList)
+							}
+
+							/*if zmwname == "m64267e_230418_135811_101517168" {
+								log.Printf("m64267e_230418_135811_101517168 cpg:%d, posOnRead:%d, readQueryLength:%d", cpg, posOnRead, readQueryLength)
+								log.Printf("m64267e_230418_135811_101517168 leftRefRCOnFList:%d, rightRefRCOnFList:%d,seqList:%s",
+									leftRefRCOnFList, rightRefRCOnFList, string(seqList))
+								log.Printf("m64267e_230418_135811_101517168 leftRefFCOnRList:%d, rightRefFCOnRList:%d",
+									leftRefFCOnRList, rightRefFCOnRList)
+							}*/
+
 						}
 						//输出
 						ccsSeqString := string(seqList)
-						fIPDPart := joinSlice(fIPDList)
-						fPWPart := joinSlice(fPWList)
-						rIPDPart := joinSlice(rIPDList)
-						rPWPart := joinSlice(rPWList)
+						fIPDPart := formatSlice(fIPDList)
+						fPWPart := formatSlice(fPWList)
+						rIPDPart := formatSlice(rIPDList)
+						rPWPart := formatSlice(rPWList)
 
-						if len(fIPDList) == 0 || len(fPWList) == 0 || len(rIPDList) == 0 || len(rPWList) == 0 {
-							log.Printf("ipd or pw length == 0")
-							continue
+						if len(fIPDList) == winsize && len(fPWList) == winsize && len(rIPDList) == winsize && len(rPWList) == winsize {
+							outputZMWLine := fmt.Sprintf("%s\t%d\t%s\t%s\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s",
+								alnRefChr, cpg, ccsSeqString, zmwname, fn, rn, fIPDPart, fPWPart, rIPDPart, rPWPart, haplotype, haploTypeBlock)
+							w.resultChan <- outputZMWLine
+							debugInfo := fmt.Sprintf("%v\t%v\t%v\t%v\t%v", readIsReverse, numfIPDList, numfPWList, numrIPDList, numrPWList)
+							w.resultChan <- debugInfo
+
 						}
-						outputZMWLine := fmt.Sprintf("%s\t%d\t%s\t%s\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s",
-							alnRefChr, cpg, ccsSeqString, zmwname, fn, rn, fIPDPart, fPWPart, rIPDPart, rPWPart, haplotype, haploTypeBlock)
-						w.resultChan <- outputZMWLine
+
 					}
 				}
 			}
 		}
 	}
 }
-
-type NumberSlice interface {
-	Len() int
-	Get(i int) float64
-}
-
-// 实现 []uint8 类型的切片
-type UInt8Slice []uint8
-
-func (u UInt8Slice) Len() int          { return len(u) }
-func (u UInt8Slice) Get(i int) float64 { return float64(u[i]) }
-
-// 实现 []float64 类型的切片
-type FloatSlice []float64
-
-func (s FloatSlice) Len() int          { return len(s) }
-func (s FloatSlice) Get(i int) float64 { return s[i] }
 
 type RecordTag struct {
 	Fn int32
@@ -217,23 +245,12 @@ type RecordTag struct {
 	PS string
 }
 
-func reverseSlice(s []float64) []float64 {
+func reverseSlice[T any](arr []T) []T {
 
-	sort.Slice(s, func(i, j int) bool {
-		return i > j
-	})
-	return s
-}
-
-func joinSlice(arr interface{}) string {
-	var res string
-	switch v := arr.(type) {
-	case []uint8:
-		res = formatSlice(v)
-	case []float64:
-		res = formatSlice(v)
-	default:
-		log.Printf("unknown type, arr:%v", arr)
+	var res []T
+	length := len(arr)
+	for i := length - 1; i >= 0; i-- {
+		res = append(res, arr[i])
 	}
 	return res
 }

@@ -29,7 +29,7 @@ func Test_whichCpgMatched(t *testing.T) {
 
 func Test_getkineticswin(t *testing.T) {
 	nums := []uint8{1, 2, 3}
-	kwin, err := getkineticswin(UInt8Slice(nums), true)
+	kwin, err := getkineticswin(nums, true)
 	if err != nil {
 		t.Errorf("err:%+v", err)
 		return
@@ -75,24 +75,42 @@ func Test_findOverlappingCpg(t *testing.T) {
 
 func Test_reverseSlice(t *testing.T) {
 
-	s := []uint8{1, 2, 3}
-	rev := reverseSlice(UInt8Slice(s))
+	s := []float64{1, 2, 3}
+	rev := reverseSlice(s)
 	t.Logf("rev:%v", rev)
 
+	s = []float64{1.5, 0.6, 3, 4, 6, 8, 6, 5, 9, 9, 9, 18, 7, 9, 12}
+	rev = reverseSlice(s)
+	t.Logf("rev:%v", rev)
+
+	s = []float64{1.5, 0.6, 3, 4, 6, 8, 6, 5, 9, 9, 9, 18, 7, 9}
+	rev = reverseSlice(s)
+	t.Logf("rev:%v", rev)
+
+	s = []float64{6, 5, 9, 9, 9, 18, 7, 9, 12, 19, 25, 45, 59, 31, 4, 14, 20, 12, 11, 10, 11}
+	rev = reverseSlice(s)
+	t.Logf("rev:%v", rev)
+
+	s = []float64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+	rev = reverseSlice(s)
+	t.Logf("rev:%v", rev)
+
+	s = []float64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13}
+	rev = reverseSlice(s)
+	t.Logf("rev:%v", rev)
 }
 
-func Test_joinSlice(t *testing.T) {
-	var s interface{}
-	s = []int{1, 2, 3}
-	res := joinSlice(s)
+func Test_formatSlice(t *testing.T) {
+	s1 := []int{1, 2, 3}
+	res := formatSlice(s1)
 	t.Logf("res:%v", res)
 
-	s = []uint8{1, 2, 3}
-	res = joinSlice(s)
+	s2 := []uint8{1, 2, 3}
+	res = formatSlice(s2)
 	t.Logf("res:%v", res)
 
-	s = []float64{1.22, 2, 3}
-	res = joinSlice(s)
+	s3 := []float64{1.22, 2, 3}
+	res = formatSlice(s3)
 	t.Logf("res:%v", res)
 
 }
