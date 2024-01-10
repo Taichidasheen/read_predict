@@ -2,7 +2,7 @@ package worker
 
 import (
 	"fmt"
-	"github.com/Taichidasheen/subreads_locate/pkg/util"
+	"github.com/Taichidasheen/read_predict/pkg/util"
 	"github.com/biogo/hts/sam"
 	"log"
 	"strings"

@@ -1,4 +1,4 @@
-module github.com/Taichidasheen/subreads_locate
+module github.com/Taichidasheen/read_predict
 
 go 1.20
 
