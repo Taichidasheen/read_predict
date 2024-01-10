@@ -9,10 +9,12 @@ import (
 	"github.com/biogo/hts/bam"
 	"github.com/biogo/hts/bgzf"
 	"github.com/biogo/hts/sam"
+	tf "github.com/wamuir/graft/tensorflow"
 	"io"
 	"log"
 	"os"
 	"runtime"
+	"runtime/pprof"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,6 +24,7 @@ import (
 
 func main() {
 
+	var inType string
 	var bamFilePath string
 	var outPrefix string
 	var cpgBed string
@@ -34,23 +37,50 @@ func main() {
 	var processor int
 	var scale bool
 	var datatype string
+	var modelJson string
+	var modelWeights string
+	var modelDir string
 
-	flag.StringVar(&bamFilePath, "bam", "", "aligned BAM file")
-	flag.StringVar(&outPrefix, "o", "", "")
-	flag.StringVar(&cpgBed, "cg", "", "CpG position, chr pos, pos is 1-based coordinate on reference's forward strand")
+	var outputType string
+	var keepK string
+
+	//debug param
+	var cpuprofile string
+	var topN int
+
+	//input related parameters
+	flag.StringVar(&inType, "inType", "", "aligned or unaligned")
+	flag.StringVar(&bamFilePath, "bam", "", "aligned/unaligned BAM file with kinetic signals, fi/fp/ri/rp for hifi reads, and ip/pw for subreads")
+	flag.StringVar(&cpgBed, "cg", "", "CpG position, column1 is chr, column2 is pos, such as chr1 132. Here pos is 1-based coordinate on Rreference's forward strand")
+	flag.StringVar(&datatype, "type", "SUBREAD", "data mode, SUBREAD or HIFI")
+	flag.IntVar(&radius, "r", 10, "cpg +/- r")
 	flag.IntVar(&minSubreadsDepth, "min", 1, "min subreads depth (by-strand) for a ZMW to be included")
 	flag.IntVar(&maxSubreadsDepth, "max", 60, "max subreads depth (by-strand) for a ZMW to be excluded")
-	flag.IntVar(&radius, "r", 10, "radius of the study window")
 	flag.IntVar(&mappingQuality, "maq", 30, "min subreads mapping quality from aligner")
 	flag.IntVar(&baseQuality, "bpq", 0, "min base quality required")
 	flag.StringVar(&chromosome, "chr", "whole_genome", "processing chromosome")
+	flag.StringVar(&modelJson, "j", "", "json file of the model, json file")
+	flag.StringVar(&modelWeights, "w", "", "weights of the model, h5 file")
+	flag.StringVar(&modelDir, "model", "", "model dir")
+
+	// processing parameters
 	flag.IntVar(&processor, "p", 0, "Parallelism processors")
+
+	// output related parameters
+	flag.StringVar(&outPrefix, "o", "", "[*outprefix*].modification.bam for ModBam outputType.  "+
+		"[*outprefix*].Kmat.txt.gz for Feature outputType. [*outprefix*].SingleMol.pre.txt.gz for MoleculeLevel outputType")
 	flag.BoolVar(&scale, "sc", false, "flag to indicate scale the signal of each subreads, (x-mean)/std. Without this tag is raw signal value")
-	flag.StringVar(&datatype, "type", "SUBREAD", "data mode, SUBREAD or HIFI")
+	flag.StringVar(&outputType, "oe", "", "Output Types: ModBam,Feature,MoleculeLevel. ModBam: Modification Bam file. | Feature: Feature matrix. | MoleculeLevel: Molecule level modification prediction")
+	flag.StringVar(&keepK, "keepK", "remove", "remove or keep. flag to indicate keep or remove the kinetic signals in the output Bam file")
+
+	//debug parameters
+	flag.StringVar(&cpuprofile, "cpuprofile", "", "write cpu profile to this file")
+	flag.IntVar(&topN, "topN", 0, "just process top N rows")
+
 	flag.Parse()
 
+	fmt.Println("inType:", inType)
 	fmt.Println("bamFilePath:", bamFilePath)
-	fmt.Println("outPrefix:", outPrefix)
 	fmt.Println("cpgBed:", cpgBed)
 	fmt.Println("minSubreadsDepth:", minSubreadsDepth)
 	fmt.Println("maxSubreadsDepth:", maxSubreadsDepth)
@@ -59,83 +89,118 @@ func main() {
 	fmt.Println("baseQuality:", baseQuality)
 	fmt.Println("chromosome:", chromosome)
 	fmt.Println("processor:", processor)
-	fmt.Println("scale:", scale)
 	fmt.Println("datatype:", datatype)
+	fmt.Println("modelDir:", modelDir)
 
-	//bamFilePath := "/storage/yangjianLab/caoyujie/project/meth/Bam_file/4_hifi_subreads/HG01109_WT_hifi/5x.sort.HG01109_WT_hifi.aln.bam"
-	bamFile, err := os.Open(bamFilePath)
-	if err != nil {
-		log.Fatalf("could not open file %q:", err)
-		return
+	fmt.Println("outPrefix:", outPrefix)
+	fmt.Println("scale:", scale)
+	fmt.Println("outputType:", outputType)
+	fmt.Println("keepK:", keepK)
+
+	fmt.Println("cpuprofile:", cpuprofile)
+	fmt.Println("topN:", topN)
+
+	fmt.Println("maxProcs:", runtime.GOMAXPROCS(0))
+
+	if cpuprofile != "" {
+		f, err := os.Create(cpuprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
 	}
-	defer bamFile.Close()
-	ok, err := bgzf.HasEOF(bamFile)
-	if err != nil {
-		log.Fatalf("could not open file %q:", err)
-		return
-	}
-	if !ok {
-		log.Printf("file has no bgzf magic block: may be truncated")
-		return
-	}
-
-	cgListMap, err := buildCgListMap(cpgBed, chromosome)
-	if err != nil {
-		log.Fatalf("buildCgListMap err:%v", err)
-		return
-	}
-
-	log.Println("len(cgListMap):", len(cgListMap))
-
-	log.Printf("maxProcs:%d", runtime.GOMAXPROCS(0))
-	//读写并发度
-	//concurrency := 8
-	concurrency := 3
-
-	//bam reader
-	bamReader, err := bam.NewReader(bamFile, concurrency)
-	if err != nil {
-		log.Fatalf("could not read bam:%v", err)
-		return
-	}
-	defer bamReader.Close()
-
-	recordChan := make(chan *sam.Record, 500)
-	resultChan := make(chan string, 3000)
 
 	var wg sync.WaitGroup
-	wg.Add(2)
-	//异步处理record
-	go processRecord(&wg, processor, cgListMap, recordChan, resultChan, mappingQuality, minSubreadsDepth, maxSubreadsDepth, radius, scale)
 
-	//resultPath := "/storage/yangjianLab/westlakechat/subreads_locate/result.txt"
-	//异步写入result
-	go writeResult(&wg, outPrefix, resultChan)
+	var taskName string
+	if inType == "unaligned" {
+		if outputType == "Feature" {
+			taskName = inType + "_" + outputType
+			wg.Add(3)
+			recordChan := make(chan *sam.Record, 1000)
+			resultChan := make(chan string, 3000)
+			//predictResultChan := make(chan *sam.Record, 1000)
 
-	var count int
-	fmt.Printf("begin count...")
-	for {
-		record, err := bamReader.Read()
-		if err == io.EOF {
-			break
+			//读取bam文件
+			go readBam(&wg, recordChan, bamFilePath, topN)
+
+			//异步处理record
+			go processTopHiFiFeature(&wg, processor, recordChan, resultChan, mappingQuality, minSubreadsDepth, maxSubreadsDepth, radius, scale)
+			//go processRecordPredict(&wg, processor, model, recordChan, predictResultChan, mappingQuality, minSubreadsDepth, maxSubreadsDepth, radius, scale, keepK)
+
+			//resultPath := "/storage/yangjianLab/westlakechat/subreads_locate/result.txt"
+			//异步写入result
+			go writeTextResult(&wg, outPrefix, resultChan)
+			//bamHeader := bamReader.Header()
+			//go writeBamRecord(&wg, bamHeader, outPrefix, predictResultChan)
 		}
-		if err != nil {
-			log.Fatalf("error reading bam: %v", err)
-			return
-		}
-		count++
-		if count%100 == 0 {
-			log.Printf("n:%d", count)
-			break
-		}
-		recordChan <- record
 	}
-	close(recordChan)
+
+	if inType == "aligned" {
+		if outputType == "Feature" {
+			taskName = inType + "_" + outputType
+			//load cgList
+			cgListMap, err := buildCgListMap(cpgBed, chromosome)
+			if err != nil {
+				log.Fatalf("buildCgListMap err:%v", err)
+				return
+			}
+			log.Println("len(cgListMap):", len(cgListMap))
+
+			wg.Add(3)
+			recordChan := make(chan *sam.Record, 1000)
+			resultChan := make(chan string, 3000)
+			//predictResultChan := make(chan *sam.Record, 1000)
+
+			//读取bam文件
+			go readBam(&wg, recordChan, bamFilePath, topN)
+
+			//异步处理record
+			go processAlignedHiFiFeature(&wg, processor, cgListMap, recordChan, resultChan, mappingQuality, minSubreadsDepth, maxSubreadsDepth, radius, scale)
+			//go processRecordPredict(&wg, processor, model, recordChan, predictResultChan, mappingQuality, minSubreadsDepth, maxSubreadsDepth, radius, scale, keepK)
+
+			//resultPath := "/storage/yangjianLab/westlakechat/subreads_locate/result.txt"
+			//异步写入result
+			go writeTextResult(&wg, outPrefix, resultChan)
+			//bamHeader := bamReader.Header()
+			//go writeBamRecord(&wg, bamHeader, outPrefix, predictResultChan)
+		}
+	}
+
+	//load模型
+	/*model, err := loadModel(modelDir, []string{"serve"})
+	if err != nil {
+		log.Printf("loadModel err:%v, modelDir:%s", err, modelDir)
+	}
+	log.Printf("loaded model:%v", model)*/
+
+	if taskName == "" {
+		log.Println("unsupported params, no task processed")
+		return
+	} else {
+		log.Printf("begin to process task:%s", taskName)
+	}
 
 	wg.Wait()
 
 	fmt.Println("exit...")
 
+}
+
+func loadModel(modelPath string, modelNames []string) (*tf.SavedModel, error) {
+	model, err := tf.LoadSavedModel(modelPath, modelNames, nil) // 载入模型
+	if err != nil {
+		log.Printf("LoadSavedModel err: %v", err)
+		return nil, err
+	}
+
+	log.Println("list possible ops in graphs")
+	for _, op := range model.Graph.Operations() {
+		log.Printf("Op name: %v", op.Name())
+	}
+
+	return model, nil
 }
 
 func buildCgListMap(cgFile string, processingChr string) (map[string][]int, error) {
@@ -186,7 +251,61 @@ func buildCgListMap(cgFile string, processingChr string) (map[string][]int, erro
 	return cgListMap, nil
 }
 
-func writeResult(wg *sync.WaitGroup, resultPath string, resultChan chan string) {
+func readBam(wg *sync.WaitGroup, recordChan chan *sam.Record, bamFilePath string, topN int) {
+	defer wg.Done()
+	defer close(recordChan)
+
+	//bamFilePath := "/storage/yangjianLab/caoyujie/project/meth/Bam_file/4_hifi_subreads/HG01109_WT_hifi/5x.sort.HG01109_WT_hifi.aln.bam"
+	bamFile, err := os.Open(bamFilePath)
+	if err != nil {
+		log.Fatalf("could not open file %q:", err)
+		return
+	}
+	defer bamFile.Close()
+	ok, err := bgzf.HasEOF(bamFile)
+	if err != nil {
+		log.Fatalf("could not open file %q:", err)
+		return
+	}
+	if !ok {
+		log.Printf("file has no bgzf magic block: may be truncated")
+		return
+	}
+	//读写并发度
+	//concurrency := 8
+	concurrency := 5
+	//bam reader
+	bamReader, err := bam.NewReader(bamFile, concurrency)
+	if err != nil {
+		log.Fatalf("could not read bam:%v", err)
+		return
+	}
+	defer bamReader.Close()
+
+	var count int
+	fmt.Printf("begin count...")
+	for {
+		record, err := bamReader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Fatalf("error reading bam: %v", err)
+			return
+		}
+		count++
+		if count%10000 == 0 {
+			log.Printf("count:%d", count)
+		}
+		if topN != 0 && count == topN+1 {
+			log.Printf("has processed topN:%d rows, break...", topN)
+			break
+		}
+		recordChan <- record
+	}
+}
+
+func writeTextResult(wg *sync.WaitGroup, resultPath string, resultChan chan string) {
 	defer wg.Done()
 
 	file, err := os.Create(resultPath)
@@ -214,13 +333,67 @@ func writeResult(wg *sync.WaitGroup, resultPath string, resultChan chan string) 
 	}
 }
 
-func processRecord(wg *sync.WaitGroup, concurrency int, cgListMap map[string][]int, recordChan chan *sam.Record, resultChan chan string,
+func writeBamRecord(wg *sync.WaitGroup, bamHeader *sam.Header, outBamPath string, predictResultChan chan *sam.Record) {
+	defer wg.Done()
+	outBam, err := os.OpenFile(outBamPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		log.Fatalf("could not open file %q:", err)
+		return
+	}
+	defer outBam.Close()
+
+	//header, _ := sam.NewHeader(nil, nil)
+	bamWriter, err := bam.NewWriter(outBam, bamHeader, 5)
+	if err != nil {
+		log.Fatalf("could not write bam:%v", err)
+		return
+	}
+	defer bamWriter.Close()
+
+	for record := range predictResultChan {
+		err := bamWriter.Write(record)
+		if err != nil {
+			log.Printf("write bam err:%+v, record:%s", err, record.Name)
+			continue
+		}
+	}
+}
+
+func processAlignedHiFiFeature(wg *sync.WaitGroup, concurrency int, cgListMap map[string][]int, recordChan chan *sam.Record, resultChan chan string,
 	mappingQ, minSubDep, maxSubDep, radius int, scaleFlag bool) {
 	defer wg.Done()
 
 	pool := pool.New(concurrency)
 	for record := range recordChan {
-		w := worker.NewLocateWorker(record, cgListMap, resultChan, mappingQ, minSubDep, maxSubDep, radius, scaleFlag)
+		w := worker.NewAlignedHiFiFeatureWorker(record, cgListMap, resultChan, mappingQ, minSubDep, maxSubDep, radius, scaleFlag)
+		pool.Run(&w)
+	}
+	pool.Shutdown()
+	//记得close resultChan, 否则会deadlock
+	close(resultChan)
+}
+
+func processTopHiFiFeature(wg *sync.WaitGroup, concurrency int, recordChan chan *sam.Record, resultChan chan string,
+	mappingQ, minSubDep, maxSubDep, radius int, scaleFlag bool) {
+	defer wg.Done()
+
+	pool := pool.New(concurrency)
+	for record := range recordChan {
+		w := worker.NewTopHiFiFeatureWorker(record, resultChan, mappingQ, minSubDep, maxSubDep, radius, scaleFlag)
+		pool.Run(&w)
+	}
+	pool.Shutdown()
+	//记得close resultChan, 否则会deadlock
+	close(resultChan)
+}
+
+func processTopHiFiPredict(wg *sync.WaitGroup, concurrency int, model *tf.SavedModel, recordChan chan *sam.Record, resultChan chan *sam.Record,
+	mappingQ, minSubDep, maxSubDep, radius int, scaleFlag bool, keepK string) {
+	defer wg.Done()
+
+	pool := pool.New(concurrency)
+	for record := range recordChan {
+		w := worker.NewTopHiFiPredictWorker(model, record, resultChan, mappingQ, minSubDep, maxSubDep, radius, scaleFlag, keepK)
 		pool.Run(&w)
 	}
 	pool.Shutdown()

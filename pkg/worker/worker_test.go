@@ -27,16 +27,6 @@ func Test_whichCpgMatched(t *testing.T) {
 	t.Logf("matched cpgs:%v, nextIdx:%d", matchedCpgs, nextIdx)
 }
 
-func Test_getkineticswin(t *testing.T) {
-	nums := []uint8{1, 2, 3}
-	kwin, err := getkineticswin(nums, true)
-	if err != nil {
-		t.Errorf("err:%+v", err)
-		return
-	}
-	t.Logf("kwin:%+v", kwin)
-}
-
 func Test_findOverlappingCpg(t *testing.T) {
 	chrcglist := []int{20, 30, 40, 50, 60}
 	cpg := findOverlappingCpg(chrcglist, 0, 10)
@@ -75,27 +65,27 @@ func Test_findOverlappingCpg(t *testing.T) {
 
 func Test_reverseSlice(t *testing.T) {
 
-	s := []float64{1, 2, 3}
+	s := []float32{1, 2, 3}
 	rev := reverseSlice(s)
 	t.Logf("rev:%v", rev)
 
-	s = []float64{1.5, 0.6, 3, 4, 6, 8, 6, 5, 9, 9, 9, 18, 7, 9, 12}
+	s = []float32{1.5, 0.6, 3, 4, 6, 8, 6, 5, 9, 9, 9, 18, 7, 9, 12}
 	rev = reverseSlice(s)
 	t.Logf("rev:%v", rev)
 
-	s = []float64{1.5, 0.6, 3, 4, 6, 8, 6, 5, 9, 9, 9, 18, 7, 9}
+	s = []float32{1.5, 0.6, 3, 4, 6, 8, 6, 5, 9, 9, 9, 18, 7, 9}
 	rev = reverseSlice(s)
 	t.Logf("rev:%v", rev)
 
-	s = []float64{6, 5, 9, 9, 9, 18, 7, 9, 12, 19, 25, 45, 59, 31, 4, 14, 20, 12, 11, 10, 11}
+	s = []float32{6, 5, 9, 9, 9, 18, 7, 9, 12, 19, 25, 45, 59, 31, 4, 14, 20, 12, 11, 10, 11}
 	rev = reverseSlice(s)
 	t.Logf("rev:%v", rev)
 
-	s = []float64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+	s = []float32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
 	rev = reverseSlice(s)
 	t.Logf("rev:%v", rev)
 
-	s = []float64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13}
+	s = []float32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13}
 	rev = reverseSlice(s)
 	t.Logf("rev:%v", rev)
 }

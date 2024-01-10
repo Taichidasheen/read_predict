@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/Taichidasheen/subreads_locate/pkg/util"
 	"github.com/biogo/hts/sam"
-	"github.com/montanaflynn/stats"
 	"log"
 	"strings"
 )
@@ -75,12 +74,12 @@ func (w *LocateWorker) Task(num int) {
 
 				locatedCpgs, cpgPosOnRead := locateCpgPosOnRead(alnRefStart, readCigar, overlappingCpg)
 				log.Printf("readName:%s, len(overlappingCpg):%d, len(locatedCpgs):%d", readName, len(overlappingCpg), len(locatedCpgs))
+				log.Printf("locatedCpgs:%+v", locatedCpgs)
 				if len(locatedCpgs) >= 1 {
 					for _, cpg := range locatedCpgs {
 						posOnRead := cpgPosOnRead[cpg]
 						//log.Printf("readName:%s, cpg:%d, posOnRead:%d", readName, cpg, posOnRead)
-						var fIPDList, fPWList, rIPDList, rPWList []float64
-						var numfIPDList, numfPWList, numrIPDList, numrPWList []float64
+						var fIPDList, fPWList, rIPDList, rPWList []float32
 						var seqList []byte
 
 						//this hifi read aligned to Ref_R_strand
@@ -92,13 +91,11 @@ func (w *LocateWorker) Task(num int) {
 							leftRefFCOnFList := refFCOnFList - radius - 1
 							rightRefFCOnFList := refFCOnFList + radius
 							if leftRefFCOnFList > 0 && rightRefFCOnFList < readQueryLength {
-								numfIPDList, _ = getkineticswin(readFiList[leftRefFCOnFList:rightRefFCOnFList], false)
 								fIPDList, err = getkineticswin(readFiList[leftRefFCOnFList:rightRefFCOnFList], scaleFlag)
 								if err != nil {
 									log.Printf("getkineticswin err:%+v", err)
 									continue
 								}
-								numfPWList, _ = getkineticswin(readFpList[leftRefFCOnFList:rightRefFCOnFList], false)
 								fPWList, err = getkineticswin(readFpList[leftRefFCOnFList:rightRefFCOnFList], scaleFlag)
 								if err != nil {
 									log.Printf("getkineticswin err:%+v", err)
@@ -112,13 +109,11 @@ func (w *LocateWorker) Task(num int) {
 							leftRefRCOnRList := refRCOnRList - radius - 1
 							rightRefRCOnRList := refRCOnRList + radius
 							if leftRefRCOnRList > 0 && rightRefRCOnRList < readQueryLength {
-								numrIPDList, _ = getkineticswin(readRiList[leftRefRCOnRList:rightRefRCOnRList], false)
 								rIPDList, err = getkineticswin(readRiList[leftRefRCOnRList:rightRefRCOnRList], scaleFlag)
 								if err != nil {
 									log.Printf("getkineticswin err:%+v", err)
 									continue
 								}
-								numrPWList, _ = getkineticswin(readRpList[leftRefRCOnRList:rightRefRCOnRList], false)
 								rPWList, err = getkineticswin(readRpList[leftRefRCOnRList:rightRefRCOnRList], scaleFlag)
 								if err != nil {
 									log.Printf("getkineticswin err:%+v", err)
@@ -127,18 +122,8 @@ func (w *LocateWorker) Task(num int) {
 								seqList = readSeqList[leftRefRCOnRList : rightRefRCOnRList+1]
 								rIPDList = reverseSlice(rIPDList)
 								rPWList = reverseSlice(rPWList)
-								numrIPDList = reverseSlice(numrIPDList)
-								numrPWList = reverseSlice(numrPWList)
 
 							}
-							/*if zmwname == "m64267e_230418_135811_101517168" {
-								log.Printf("reverse m64267e_230418_135811_101517168 cpg:%d, posOnRead:%d, readQueryLength:%d",
-									cpg, posOnRead, readQueryLength)
-								log.Printf("reverse m64267e_230418_135811_101517168 leftRefFCOnFList:%d, rightRefFCOnFList:%d",
-									leftRefFCOnFList, rightRefFCOnFList)
-								log.Printf("reverse m64267e_230418_135811_101517168 leftRefRCOnRList:%d, rightRefRCOnRList:%d, seqList:%s",
-									leftRefRCOnRList, rightRefRCOnRList, string(seqList))
-							}*/
 
 						} else {
 							//(1)
@@ -148,13 +133,11 @@ func (w *LocateWorker) Task(num int) {
 							leftRefRCOnFList := refRCOnFList - radius - 1
 							rightRefRCOnFList := refRCOnFList + radius
 							if leftRefRCOnFList > 0 && rightRefRCOnFList < readQueryLength {
-								numrIPDList, err = getkineticswin(readFiList[leftRefRCOnFList:rightRefRCOnFList], false)
 								rIPDList, err = getkineticswin(readFiList[leftRefRCOnFList:rightRefRCOnFList], scaleFlag)
 								if err != nil {
 									log.Printf("getkineticswin err:%+v", err)
 									continue
 								}
-								numrPWList, err = getkineticswin(readFpList[leftRefRCOnFList:rightRefRCOnFList], false)
 								rPWList, err = getkineticswin(readFpList[leftRefRCOnFList:rightRefRCOnFList], scaleFlag)
 								if err != nil {
 									log.Printf("getkineticswin err:%+v", err)
@@ -170,13 +153,11 @@ func (w *LocateWorker) Task(num int) {
 							leftRefFCOnRList := refFCOnRList - radius - 1
 							rightRefFCOnRList := refFCOnRList + radius
 							if leftRefFCOnRList > 0 && rightRefFCOnRList < readQueryLength {
-								numfIPDList, _ = getkineticswin(readRiList[leftRefFCOnRList:rightRefFCOnRList], false)
 								fIPDList, err = getkineticswin(readRiList[leftRefFCOnRList:rightRefFCOnRList], scaleFlag)
 								if err != nil {
 									log.Printf("getkineticswin err:%+v", err)
 									continue
 								}
-								numfPWList, _ = getkineticswin(readRpList[leftRefFCOnRList:rightRefFCOnRList], false)
 								fPWList, err = getkineticswin(readRpList[leftRefFCOnRList:rightRefFCOnRList], scaleFlag)
 								if err != nil {
 									log.Printf("getkineticswin err:%+v", err)
@@ -185,30 +166,7 @@ func (w *LocateWorker) Task(num int) {
 
 								fIPDList = reverseSlice(fIPDList)
 								fPWList = reverseSlice(fPWList)
-								if zmwname == "m64267e_230418_135811_144902294" {
-									log.Printf("before reverse numfIPDList:%v", numfIPDList)
-									log.Printf("before reverse numfPWList:%v", numfPWList)
-								}
-								numfIPDList = reverseSlice(numfIPDList)
-								numfPWList = reverseSlice(numfPWList)
-								if zmwname == "m64267e_230418_135811_144902294" {
-									log.Printf("after reverse numfIPDList:%v", numfIPDList)
-									log.Printf("after reverse numfPWList:%v", numfPWList)
-								}
 							}
-							if zmwname == "m64267e_230418_135811_144902294" {
-								log.Printf("m64267e_230418_135811_144902294 readRiList:%v", readRiList)
-								log.Printf("m64267e_230418_135811_144902294 readRpList:%v", readRpList)
-							}
-
-							/*if zmwname == "m64267e_230418_135811_101517168" {
-								log.Printf("m64267e_230418_135811_101517168 cpg:%d, posOnRead:%d, readQueryLength:%d", cpg, posOnRead, readQueryLength)
-								log.Printf("m64267e_230418_135811_101517168 leftRefRCOnFList:%d, rightRefRCOnFList:%d,seqList:%s",
-									leftRefRCOnFList, rightRefRCOnFList, string(seqList))
-								log.Printf("m64267e_230418_135811_101517168 leftRefFCOnRList:%d, rightRefFCOnRList:%d",
-									leftRefFCOnRList, rightRefFCOnRList)
-							}*/
-
 						}
 						//输出
 						ccsSeqString := string(seqList)
@@ -221,8 +179,6 @@ func (w *LocateWorker) Task(num int) {
 							outputZMWLine := fmt.Sprintf("%s\t%d\t%s\t%s\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s",
 								alnRefChr, cpg, ccsSeqString, zmwname, fn, rn, fIPDPart, fPWPart, rIPDPart, rPWPart, haplotype, haploTypeBlock)
 							w.resultChan <- outputZMWLine
-							debugInfo := fmt.Sprintf("%v\t%v\t%v\t%v\t%v", readIsReverse, numfIPDList, numfPWList, numrIPDList, numrPWList)
-							w.resultChan <- debugInfo
 
 						}
 
@@ -231,163 +187,6 @@ func (w *LocateWorker) Task(num int) {
 			}
 		}
 	}
-}
-
-type RecordTag struct {
-	Fn int32
-	Rn int32
-	Fi []uint8
-	Fp []uint8
-	Ri []uint8
-	Rp []uint8
-	// HP:i:2   PS:i:11457
-	HP string
-	PS string
-}
-
-func reverseSlice[T any](arr []T) []T {
-
-	var res []T
-	length := len(arr)
-	for i := length - 1; i >= 0; i-- {
-		res = append(res, arr[i])
-	}
-	return res
-}
-
-func formatSlice[T any](arr []T) string {
-	var strs []string
-	for _, num := range arr {
-		strs = append(strs, fmt.Sprintf("%v", num))
-	}
-	return strings.Join(strs, ",")
-}
-
-func extractRecordTag(record *sam.Record) (*RecordTag, error) {
-	//fn
-	fnAux, exist := record.Tag([]byte{'f', 'n'})
-	if !exist {
-		log.Printf("record fn not exist, record name:%s", record.Name)
-		return nil, fmt.Errorf("fn not exist")
-	}
-	fn, ok := fnAux.Value().(int32)
-	if !ok {
-		log.Printf("record fn invalid, record name:%s", record.Name)
-		return nil, fmt.Errorf("fn invalid")
-	}
-
-	//rn
-	rnAux, exist := record.Tag([]byte{'r', 'n'})
-	if !exist {
-		log.Printf("record rn not exist, record name:%s", record.Name)
-		return nil, fmt.Errorf("rn not exist")
-	}
-	rn, ok := rnAux.Value().(int32)
-	if !ok {
-		log.Printf("record rn invalid, record name:%s", record.Name)
-		return nil, fmt.Errorf("rn invalid")
-	}
-	fmt.Println("record name:", record.Name, "fn:", fn, " rn:", rn)
-
-	//fi
-	fiAux, exist := record.Tag([]byte{'f', 'i'})
-	if !exist {
-		log.Printf("record fi not exist, record name:%s", record.Name)
-		return nil, fmt.Errorf("fi not exist")
-	}
-	fi, ok := fiAux.Value().([]uint8)
-	if !ok {
-		log.Printf("record fi invalid, record name:%s", record.Name)
-		return nil, fmt.Errorf("fi invalid")
-	}
-
-	//fp
-	fpAux, exist := record.Tag([]byte{'f', 'p'})
-	if !exist {
-		log.Printf("record fp not exist, record name:%s", record.Name)
-		return nil, fmt.Errorf("fp not exist")
-	}
-	fp, ok := fpAux.Value().([]uint8)
-	if !ok {
-		log.Printf("record fp invalid, record name:%s", record.Name)
-		return nil, fmt.Errorf("fp invalid")
-	}
-
-	//ri
-	riAux, exist := record.Tag([]byte{'r', 'i'})
-	if !exist {
-		log.Printf("record ri not exist, record name:%s", record.Name)
-		return nil, fmt.Errorf("ri not exist")
-	}
-	ri, ok := riAux.Value().([]uint8)
-	if !ok {
-		log.Printf("record ri invalid, record name:%s", record.Name)
-		return nil, fmt.Errorf("ri invalid")
-	}
-
-	//rp
-	rpAux, exist := record.Tag([]byte{'r', 'p'})
-	if !exist {
-		log.Printf("record rp not exist, record name:%s", record.Name)
-		return nil, fmt.Errorf("rp not exist")
-	}
-	rp, ok := rpAux.Value().([]uint8)
-	if !ok {
-		log.Printf("record rp invalid, record name:%s", record.Name)
-		return nil, fmt.Errorf("rp invalid")
-	}
-
-	// HP:i:2   PS:i:11457
-	var HP, PS string
-	HPAux, exist := record.Tag([]byte{'H', 'P'})
-	if !exist {
-		log.Printf("record HP not exist, record name:%s", record.Name)
-		HP = "X"
-	} else {
-		HPVal, ok := HPAux.Value().(int32)
-		if !ok {
-			log.Printf("record HP invalid, record name:%s", record.Name)
-			return nil, fmt.Errorf("HP invalid")
-		}
-		HP = fmt.Sprintf("%d", HPVal)
-	}
-
-	PSAux, exist := record.Tag([]byte{'P', 'S'})
-	if !exist {
-		log.Printf("record PS not exist, record name:%s", record.Name)
-		PS = "X"
-	} else {
-		PSVal, ok := PSAux.Value().(int32)
-		if !ok {
-			log.Printf("record PS invalid, record name:%s", record.Name)
-			return nil, fmt.Errorf("PS invalid")
-		}
-		PS = fmt.Sprintf("%d", PSVal)
-	}
-
-	recordTag := &RecordTag{
-		Fn: fn,
-		Rn: rn,
-		Fi: fi,
-		Fp: fp,
-		Ri: ri,
-		Rp: rp,
-		HP: HP,
-		PS: PS,
-	}
-	return recordTag, nil
-}
-
-func isReverse(flag sam.Flags) bool {
-	return flag&sam.Reverse == sam.Reverse
-}
-
-func isSecondary(flag sam.Flags) bool {
-	return flag&sam.Secondary == sam.Secondary
-}
-
-func isSupplementary(flag sam.Flags) bool {
-	return flag&sam.Supplementary == sam.Supplementary
 }
 
 func findOverlappingCpg(chrcglist []int, refStart, refEnd int) []int {
@@ -414,7 +213,6 @@ func locateCpgPosOnRead(alnRefStart int, readCigar sam.Cigar, overlappingCpg []i
 	var locatedCpgs []int
 	cpgPosOnRead := make(map[int]int)
 	cpgBeginIdx := 0
-
 	readLeadingFlag := 1
 	readPosBlkStart := 0
 	readPosBlkEnd := 0
@@ -459,6 +257,10 @@ func locateCpgPosOnRead(alnRefStart int, readCigar sam.Cigar, overlappingCpg []i
 			if op != sam.CigarDeletion && op != sam.CigarSkipped {
 				//检查当前refStart和refEnd是否包含某个cpg
 				matchedCpgs, nextIdx := whichCpgMatched(overlappingCpg, cpgBeginIdx, refWalkingPosStart, refWalkingPosEnd)
+				if alnRefStart == 49196398 {
+					log.Printf("cpgBeginIdx:%d, refWalkingPosStart:%d, refWalkingPosEnd:%d", cpgBeginIdx, refWalkingPosStart, refWalkingPosEnd)
+					log.Printf("mathcedCpgs:%v, nextIdx:%d", matchedCpgs, nextIdx)
+				}
 				if nextIdx > len(overlappingCpg) {
 					//对比结束
 					return locatedCpgs, cpgPosOnRead
@@ -521,32 +323,4 @@ func matchingRatio(record *sam.Record) float32 {
 	}
 	ratio := float32(matchingLen) / float32(totalLen)
 	return ratio
-}
-
-func getkineticswin(nums []uint8, scaleFlag bool) ([]float64, error) {
-	if scaleFlag == false {
-		var fnums []float64
-		for _, num := range nums {
-			fnums = append(fnums, float64(num))
-		}
-		return fnums, nil
-	}
-	//计算平均值和标准差
-	if len(nums) == 0 {
-		return nil, fmt.Errorf("empty input")
-	}
-	data := stats.LoadRawData(nums)
-	mean, _ := stats.Mean(data)
-	std, _ := stats.StandardDeviation(data)
-	//fmt.Println("std:", std)
-	//计算(x-mean)/std
-	var kwin []float64
-	for _, num := range nums {
-		temp, err := stats.Round((float64(num)-mean)/std, 2)
-		if err != nil {
-			return nil, err
-		}
-		kwin = append(kwin, temp)
-	}
-	return kwin, nil
 }
