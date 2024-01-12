@@ -194,6 +194,7 @@ func genMLTag(probes []float32) (sam.Aux, error) {
 func genMMTag(readSeqString string) (sam.Aux, error) {
 	countC := 0
 	var mmArr []string
+	//注意：这里是len(readSeqString)-1,如果是len(readSeqString)可能会数组越界
 	for i := 0; i < len(readSeqString)-1; i++ {
 		if readSeqString[i] == 'C' && readSeqString[i:i+2] != "CG" {
 			countC++

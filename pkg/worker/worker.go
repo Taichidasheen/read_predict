@@ -72,7 +72,7 @@ func (w *LocateWorker) Task(num int) {
 				haplotype := recordTag.HP
 				haploTypeBlock := recordTag.PS
 
-				locatedCpgs, cpgPosOnRead := locateCpgPosOnRead(alnRefStart, readCigar, overlappingCpg)
+				locatedCpgs, cpgPosOnRead := locateCpgPosOnSeq(alnRefStart, readCigar, overlappingCpg)
 				log.Printf("readName:%s, len(overlappingCpg):%d, len(locatedCpgs):%d", readName, len(overlappingCpg), len(locatedCpgs))
 				log.Printf("locatedCpgs:%+v", locatedCpgs)
 				if len(locatedCpgs) >= 1 {
@@ -209,38 +209,38 @@ func findOverlappingCpg(chrcglist []int, refStart, refEnd int) []int {
 	return overlappingCpg
 }
 
-func locateCpgPosOnRead(alnRefStart int, readCigar sam.Cigar, overlappingCpg []int) ([]int, map[int]int) {
+func locateCpgPosOnSeq(alnRefStart int, readCigar sam.Cigar, overlappingCpg []int) ([]int, map[int]int) {
 	var locatedCpgs []int
-	cpgPosOnRead := make(map[int]int)
+	cpgPosOnSeq := make(map[int]int)
 	cpgBeginIdx := 0
-	readLeadingFlag := 1
-	readPosBlkStart := 0
-	readPosBlkEnd := 0
+	seqLeadingFlag := 1
+	seqPosBlkStart := 0
+	seqPosBlkEnd := 0
 	refWalkingPosStart := 0
 	refWalkingPosEnd := 0
 	for _, cigar := range readCigar {
 		op := cigar.Type()
 		count := cigar.Len()
 		if (op == sam.CigarInsertion || op == sam.CigarSoftClipped || op == sam.CigarHardClipped ||
-			op == sam.CigarPadded) && readLeadingFlag == 1 {
+			op == sam.CigarPadded) && seqLeadingFlag == 1 {
 			//1,4 consume reads, 5_hard_clip should also be counted on reads, since the aligner doesn't change ipd/pw signal vector as the SEQ
 			if op != sam.CigarPadded {
-				readPosBlkStart = readPosBlkEnd
-				readPosBlkEnd = readPosBlkStart + count
+				seqPosBlkStart = seqPosBlkEnd
+				seqPosBlkEnd = seqPosBlkStart + count
 			}
 		} else {
 			//注意：下面这段逻辑有点奇怪，可以简化
-			if readLeadingFlag == 1 {
-				readLeadingFlag = 2
+			if seqLeadingFlag == 1 {
+				seqLeadingFlag = 2
 				if (op == sam.CigarMatch || op == sam.CigarDeletion || op == sam.CigarSkipped ||
-					op == sam.CigarEqual || op == sam.CigarMismatch) && readLeadingFlag == 2 {
+					op == sam.CigarEqual || op == sam.CigarMismatch) && seqLeadingFlag == 2 {
 					refWalkingPosStart = alnRefStart
 					refWalkingPosEnd = refWalkingPosStart + count
 				}
 				if (op == sam.CigarMatch || op == sam.CigarInsertion || op == sam.CigarSoftClipped ||
-					op == sam.CigarEqual || op == sam.CigarMismatch) && readLeadingFlag == 2 {
-					readPosBlkStart = readPosBlkEnd
-					readPosBlkEnd = readPosBlkStart + count
+					op == sam.CigarEqual || op == sam.CigarMismatch) && seqLeadingFlag == 2 {
+					seqPosBlkStart = seqPosBlkEnd
+					seqPosBlkEnd = seqPosBlkStart + count
 				}
 			} else {
 				if op == sam.CigarMatch || op == sam.CigarDeletion || op == sam.CigarSkipped ||
@@ -250,8 +250,8 @@ func locateCpgPosOnRead(alnRefStart int, readCigar sam.Cigar, overlappingCpg []i
 				}
 				if op == sam.CigarMatch || op == sam.CigarInsertion || op == sam.CigarSoftClipped ||
 					op == sam.CigarEqual || op == sam.CigarMismatch {
-					readPosBlkStart = readPosBlkEnd
-					readPosBlkEnd = readPosBlkStart + count
+					seqPosBlkStart = seqPosBlkEnd
+					seqPosBlkEnd = seqPosBlkStart + count
 				}
 			}
 			if op != sam.CigarDeletion && op != sam.CigarSkipped {
@@ -263,15 +263,15 @@ func locateCpgPosOnRead(alnRefStart int, readCigar sam.Cigar, overlappingCpg []i
 				}
 				if nextIdx > len(overlappingCpg) {
 					//对比结束
-					return locatedCpgs, cpgPosOnRead
+					return locatedCpgs, cpgPosOnSeq
 				} else {
 					cpgBeginIdx = nextIdx
 					for _, cpg := range matchedCpgs {
 						lastOpNeeded := cpg - refWalkingPosStart
 						if op == sam.CigarMatch || op == sam.CigarInsertion || op == sam.CigarSoftClipped ||
 							op == sam.CigarEqual || op == sam.CigarMismatch {
-							readPos := readPosBlkStart + lastOpNeeded
-							cpgPosOnRead[cpg] = readPos - 1
+							seqPos := seqPosBlkStart + lastOpNeeded
+							cpgPosOnSeq[cpg] = seqPos - 1
 							locatedCpgs = append(locatedCpgs, cpg)
 						}
 					}
@@ -279,7 +279,7 @@ func locateCpgPosOnRead(alnRefStart int, readCigar sam.Cigar, overlappingCpg []i
 			}
 		}
 	}
-	return locatedCpgs, cpgPosOnRead
+	return locatedCpgs, cpgPosOnSeq
 }
 
 // 判断哪些cpg在当前给定的范围内，返回这些cpg的值和在cpglist中的坐标

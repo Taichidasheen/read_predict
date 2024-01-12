@@ -2,6 +2,7 @@ package worker
 
 import (
 	"fmt"
+	"github.com/Taichidasheen/read_predict/pkg/opt"
 	"github.com/biogo/hts/sam"
 	"log"
 	"strings"
@@ -10,90 +11,90 @@ import (
 type TopHiFiFeatureWorker struct {
 	record     *sam.Record
 	resultChan chan string
-	mappingQ   int
-	minSubDep  int
-	maxSubDep  int
-	radius     int
-	scaleFlag  bool
-	err        error
+	//mappingQ   int
+	//minSubDep  int
+	//maxSubDep  int
+	//radius     int
+	//scaleFlag  bool
+	opts opt.Options
+	err  error
 }
 
-func NewTopHiFiFeatureWorker(record *sam.Record, resultChan chan string,
-	mappingQ, minSubDep, maxSubDep, radius int, scaleFlag bool) TopHiFiFeatureWorker {
+func NewTopHiFiFeatureWorker(record *sam.Record, resultChan chan string, opts opt.Options) TopHiFiFeatureWorker {
 	return TopHiFiFeatureWorker{
 		record:     record,
 		resultChan: resultChan,
-		mappingQ:   mappingQ,
-		minSubDep:  minSubDep,
-		maxSubDep:  maxSubDep,
-		radius:     radius,
-		scaleFlag:  scaleFlag,
+		opts:       opts,
+		//mappingQ:   mappingQ,
+		//minSubDep:  minSubDep,
+		//maxSubDep:  maxSubDep,
+		//radius:     radius,
+		//scaleFlag:  scaleFlag,
 	}
 }
 
 func (w *TopHiFiFeatureWorker) Task(num int) {
 	record := w.record
-	radius := w.radius
-	scaleFlag := w.scaleFlag
-	if !isSecondary(record.Flags) && !isSupplementary(record.Flags) && int(record.MapQ) > w.mappingQ && matchingRatio(record) >= 0.85 {
-		recordTag, err := extractRecordTag(record)
-		if err != nil {
-			log.Printf("extractRecordTag err:%v", err)
-			w.err = err
-			return
-		}
-		fn := recordTag.Fn
-		rn := recordTag.Rn
-		totalSubreadsDep := fn + rn
-		if totalSubreadsDep >= int32(w.minSubDep) && totalSubreadsDep <= int32(w.maxSubDep) && fn >= 1 && rn >= 1 {
-			readFiList := recordTag.Fi
-			readFpList := recordTag.Fp
-			readRiList := recordTag.Ri
-			readRpList := recordTag.Rp
-			readSeqList := record.Seq.Expand()
-			readIsReverse := false
-			readQueryLength := len(readSeqList)
-			readName := record.Name
-			parts := strings.Split(readName, "/")
-			zmwname := parts[0] + "_" + parts[1]
-
-			cpgPosOnRead := findCpGPos(string(readSeqList), radius)
-			//log.Printf("readName:%s, len(cpgPosOnRead):%d", record.Name, len(cpgPosOnRead))
-			if len(cpgPosOnRead) >= 1 {
-				for _, posOnRead := range cpgPosOnRead {
-					//remove cpg at the head or tail of a read, which causing out of range index
-					if posOnRead < radius+5 {
-						log.Printf("posOnRead head remove, readname:%s, posOnRead:%d", readName, posOnRead)
-						continue
-					}
-					if posOnRead > readQueryLength-radius-5 {
-						log.Printf("posOnRead tail remove, readname:%s, posOnRead:%d", readName, posOnRead)
-						continue
-					}
-					//log.Printf("readName:%s, posOnRead:%d", readName, posOnRead)
-
-					feature, err := HiFiRead_cpg_K_Feature(posOnRead, readIsReverse, radius, readQueryLength, readSeqList, readFiList, readFpList, readRiList, readRpList, scaleFlag)
-					if err != nil {
-						log.Printf("HiFiRead_cpg_K_Feature err:%v, read name:%s", err, record.Name)
-						continue
-					}
-
-					//输出
-					fTemplateSeqStr := string(feature.TemplateSeq)
-					fIPDPart := formatSlice(feature.TemplateIPDList)
-					fPWPart := formatSlice(feature.TemplatePWList)
-					rTemplateSeqStr := string(feature.ComTemplateSeq)
-					rIPDPart := formatSlice(feature.ComTemplateIPDList)
-					rPWPart := formatSlice(feature.ComTemplatePWList)
-
-					outputZMWLine := fmt.Sprintf("%s\t%d\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s",
-						zmwname, posOnRead, fn, rn, fTemplateSeqStr, fIPDPart, fPWPart,
-						rTemplateSeqStr, rIPDPart, rPWPart)
-					w.resultChan <- outputZMWLine
-
-				}
-			}
-
-		}
+	radius := w.opts.Radius
+	scaleFlag := w.opts.ScaleFlag
+	recordTag, err := extractRecordTag(record)
+	if err != nil {
+		log.Printf("extractRecordTag err:%v", err)
+		w.err = err
+		return
 	}
+	fn := recordTag.Fn
+	rn := recordTag.Rn
+	totalSubreadsDep := fn + rn
+	if totalSubreadsDep >= int32(w.opts.MinSubDep) && totalSubreadsDep <= int32(w.opts.MaxSubDep) && fn >= 1 && rn >= 1 {
+		readFiList := recordTag.Fi
+		readFpList := recordTag.Fp
+		readRiList := recordTag.Ri
+		readRpList := recordTag.Rp
+		readSeqList := record.Seq.Expand()
+		readIsReverse := false
+		readQueryLength := len(readSeqList)
+		readName := record.Name
+		parts := strings.Split(readName, "/")
+		zmwname := parts[0] + "_" + parts[1]
+
+		cpgPosOnRead := findCpGPos(string(readSeqList), radius)
+		//log.Printf("readName:%s, len(cpgPosOnRead):%d", record.Name, len(cpgPosOnRead))
+		if len(cpgPosOnRead) >= 1 {
+			for _, posOnRead := range cpgPosOnRead {
+				//remove cpg at the head or tail of a read, which causing out of range index
+				if posOnRead < radius+5 {
+					log.Printf("posOnRead head remove, readname:%s, posOnRead:%d", readName, posOnRead)
+					continue
+				}
+				if posOnRead > readQueryLength-radius-5 {
+					log.Printf("posOnRead tail remove, readname:%s, posOnRead:%d", readName, posOnRead)
+					continue
+				}
+				//log.Printf("readName:%s, posOnRead:%d", readName, posOnRead)
+
+				feature, err := HiFiRead_cpg_K_Feature(posOnRead, readIsReverse, radius, readQueryLength, readSeqList, readFiList, readFpList, readRiList, readRpList, scaleFlag)
+				if err != nil {
+					log.Printf("HiFiRead_cpg_K_Feature err:%v, read name:%s", err, record.Name)
+					continue
+				}
+
+				//输出
+				fTemplateSeqStr := string(feature.TemplateSeq)
+				fIPDPart := formatSlice(feature.TemplateIPDList)
+				fPWPart := formatSlice(feature.TemplatePWList)
+				rTemplateSeqStr := string(feature.ComTemplateSeq)
+				rIPDPart := formatSlice(feature.ComTemplateIPDList)
+				rPWPart := formatSlice(feature.ComTemplatePWList)
+
+				outputZMWLine := fmt.Sprintf("Top\t%s\t%d\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s",
+					zmwname, posOnRead, fn, rn, fTemplateSeqStr, fIPDPart, fPWPart,
+					rTemplateSeqStr, rIPDPart, rPWPart)
+				w.resultChan <- outputZMWLine
+
+			}
+		}
+
+	}
+
 }

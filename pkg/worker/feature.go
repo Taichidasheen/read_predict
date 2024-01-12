@@ -17,7 +17,7 @@ type Feature struct {
 	ComTemplatePWList  []float32
 }
 
-func HiFiRead_cpg_K_Feature(posOnRead int, readIsReverse bool, radius int, readQueryLength int, readSeqList []byte,
+func HiFiRead_cpg_K_Feature(posOnSeq int, readIsReverse bool, radius int, readQueryLength int, readSeqList []byte,
 	readFiList, readFpList, readRiList, readRpList []uint8, scaleFlag bool) (*Feature, error) {
 	/*start := time.Now()
 	defer func() {
@@ -46,7 +46,7 @@ func HiFiRead_cpg_K_Feature(posOnRead int, readIsReverse bool, radius int, readQ
 		//(1)
 		//For subreads mapped to Ref_R_strand, which carrying information when syn the complementary F_strand, key 'F' #
 		//information is stored in fi, fp tags
-		refFCOnFList := readQueryLength - posOnRead - 1
+		refFCOnFList := readQueryLength - posOnSeq - 1
 		leftRefFCOnFList := refFCOnFList - radius - 1
 		rightRefFCOnFList := refFCOnFList + radius
 		if leftRefFCOnFList > 0 && rightRefFCOnFList < readQueryLength {
@@ -62,12 +62,12 @@ func HiFiRead_cpg_K_Feature(posOnRead int, readIsReverse bool, radius int, readQ
 			}
 			//fTemplateSeq = reverseSlice(readSeqList)[leftRefFCOnFList:rightRefFCOnFList]
 			//fTemplateSeq = reverseSliceByte(readSeqList)[leftRefFCOnFList:rightRefFCOnFList]
-			templateSeq = reverseSliceByte(readSeqList[posOnRead-radius : posOnRead+radius+1])
+			templateSeq = reverseSliceByte(readSeqList[posOnSeq-radius : posOnSeq+radius+1])
 		}
 		//(2)
 		//For subreads mapped to Ref_F_strand, which carrying information when syn the complementary R_strand, key 'R' #
 		//information is stored in ri, rp tags
-		refRCOnRList := posOnRead + 1
+		refRCOnRList := posOnSeq + 1
 		leftRefRCOnRList := refRCOnRList - radius
 		rightRefRCOnRList := refRCOnRList + radius + 1
 		if leftRefRCOnRList > 0 && rightRefRCOnRList < readQueryLength {
@@ -90,7 +90,7 @@ func HiFiRead_cpg_K_Feature(posOnRead int, readIsReverse bool, radius int, readQ
 		//(1)
 		//For subreads mapped to Ref_F_strand, which carrying information when syn the complementary R_strand, key 'R' #
 		//information is stored in fi, fp tags
-		refRCOnFList := posOnRead + 1
+		refRCOnFList := posOnSeq + 1
 		leftRefRCOnFList := refRCOnFList - radius
 		rightRefRCOnFList := refRCOnFList + radius + 1
 		if leftRefRCOnFList > 0 && rightRefRCOnFList < readQueryLength {
@@ -110,7 +110,7 @@ func HiFiRead_cpg_K_Feature(posOnRead int, readIsReverse bool, radius int, readQ
 		//(2)
 		//For subreads mapped to Ref_R_strand, which carrying information when syn the complementary F_strand, key 'F' #
 		//information is stored in ri, rp tags
-		refFCOnRList := readQueryLength - posOnRead - 1
+		refFCOnRList := readQueryLength - posOnSeq - 1
 		leftRefFCOnRList := refFCOnRList - radius - 1
 		rightRefFCOnRList := refFCOnRList + radius
 		if leftRefFCOnRList > 0 && rightRefFCOnRList < readQueryLength {
@@ -124,7 +124,7 @@ func HiFiRead_cpg_K_Feature(posOnRead int, readIsReverse bool, radius int, readQ
 				log.Printf("getkineticswin err:%+v", err)
 				return nil, err
 			}
-			comTemplateSeq = reverseSliceByte(readSeqList[posOnRead-radius : posOnRead+radius+1])
+			comTemplateSeq = reverseSliceByte(readSeqList[posOnSeq-radius : posOnSeq+radius+1])
 			comTemplateIPDList = reverseSlice(comTemplateIPDList)
 			comTemplatePWList = reverseSlice(comTemplatePWList)
 		}
@@ -139,7 +139,7 @@ func HiFiRead_cpg_K_Feature(posOnRead int, readIsReverse bool, radius int, readQ
 		ComTemplatePWList:  comTemplatePWList,
 	}
 	if featureHasEmptyField(feature) {
-		log.Printf("feature has empty field, posOnRead:%d, feature:%+v", posOnRead, feature)
+		log.Printf("feature has empty field, posOnRead:%d, feature:%+v", posOnSeq, feature)
 		return nil, fmt.Errorf("empty feature field")
 	}
 

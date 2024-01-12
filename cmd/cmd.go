@@ -2,8 +2,10 @@ package main
 
 import (
 	"bufio"
+	"compress/gzip"
 	"flag"
 	"fmt"
+	"github.com/Taichidasheen/read_predict/pkg/opt"
 	"github.com/Taichidasheen/read_predict/pkg/pool"
 	"github.com/Taichidasheen/read_predict/pkg/worker"
 	"github.com/biogo/hts/bam"
@@ -111,6 +113,17 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
+	opts := opt.Options{
+		MappingQ:   mappingQuality,
+		MinSubDep:  minSubreadsDepth,
+		MaxSubDep:  maxSubreadsDepth,
+		Radius:     radius,
+		ScaleFlag:  scale,
+		KeepK:      keepK,
+		OutputType: outputType,
+		Processor:  processor,
+	}
+
 	var wg sync.WaitGroup
 
 	var taskName string
@@ -126,12 +139,11 @@ func main() {
 			go readBam(&wg, recordChan, bamFilePath, topN)
 
 			//异步处理record
-			go processTopHiFiFeature(&wg, processor, recordChan, resultChan, mappingQuality, minSubreadsDepth, maxSubreadsDepth, radius, scale)
-			//go processRecordPredict(&wg, processor, model, recordChan, predictResultChan, mappingQuality, minSubreadsDepth, maxSubreadsDepth, radius, scale, keepK)
+			go processTopHiFiFeature(&wg, recordChan, resultChan, opts)
 
 			//resultPath := "/storage/yangjianLab/westlakechat/subreads_locate/result.txt"
 			//异步写入result
-			go writeTextResult(&wg, outPrefix, resultChan)
+			go writeGzipResult(&wg, outPrefix, resultChan)
 			//bamHeader := bamReader.Header()
 			//go writeBamRecord(&wg, bamHeader, outPrefix, predictResultChan)
 		}
@@ -157,12 +169,11 @@ func main() {
 			go readBam(&wg, recordChan, bamFilePath, topN)
 
 			//异步处理record
-			go processAlignedHiFiFeature(&wg, processor, cgListMap, recordChan, resultChan, mappingQuality, minSubreadsDepth, maxSubreadsDepth, radius, scale)
-			//go processRecordPredict(&wg, processor, model, recordChan, predictResultChan, mappingQuality, minSubreadsDepth, maxSubreadsDepth, radius, scale, keepK)
+			go processAlignedHiFiFeature(&wg, cgListMap, recordChan, resultChan, opts)
 
 			//resultPath := "/storage/yangjianLab/westlakechat/subreads_locate/result.txt"
 			//异步写入result
-			go writeTextResult(&wg, outPrefix, resultChan)
+			go writeGzipResult(&wg, outPrefix, resultChan)
 			//bamHeader := bamReader.Header()
 			//go writeBamRecord(&wg, bamHeader, outPrefix, predictResultChan)
 		}
@@ -305,10 +316,10 @@ func readBam(wg *sync.WaitGroup, recordChan chan *sam.Record, bamFilePath string
 	}
 }
 
-func writeTextResult(wg *sync.WaitGroup, resultPath string, resultChan chan string) {
+func writeTextResult(wg *sync.WaitGroup, outPrefix string, resultChan chan string) {
 	defer wg.Done()
 
-	file, err := os.Create(resultPath)
+	file, err := os.Create(outPrefix)
 	if err != nil {
 		log.Fatalf("could not open file %q:", err)
 		return
@@ -317,7 +328,6 @@ func writeTextResult(wg *sync.WaitGroup, resultPath string, resultChan chan stri
 
 	// 创建一个写入器
 	writer := bufio.NewWriter(file)
-
 	for line := range resultChan {
 		_, err := writer.WriteString(line + "\n")
 		if err != nil {
@@ -327,6 +337,37 @@ func writeTextResult(wg *sync.WaitGroup, resultPath string, resultChan chan stri
 	}
 	// 将缓冲区的数据刷新到文件中
 	err = writer.Flush()
+	if err != nil {
+		log.Println("Error flushing writer:", err)
+		return
+	}
+}
+
+func writeGzipResult(wg *sync.WaitGroup, outPrefix string, resultChan chan string) {
+	defer wg.Done()
+
+	resultPath := outPrefix + ".Kmat.txt.gz"
+
+	file, err := os.Create(resultPath)
+	if err != nil {
+		log.Fatalf("could not open file %q:", err)
+		return
+	}
+	defer file.Close()
+
+	// 创建一个写入器
+	gzipWriter := gzip.NewWriter(file)
+	defer gzipWriter.Close()
+
+	for line := range resultChan {
+		_, err := gzipWriter.Write([]byte(line + "\n"))
+		if err != nil {
+			log.Println("Error writing line:", err)
+			return
+		}
+	}
+	// 将缓冲区的数据刷新到文件中
+	err = gzipWriter.Flush()
 	if err != nil {
 		log.Println("Error flushing writer:", err)
 		return
@@ -359,13 +400,16 @@ func writeBamRecord(wg *sync.WaitGroup, bamHeader *sam.Header, outBamPath string
 	}
 }
 
-func processAlignedHiFiFeature(wg *sync.WaitGroup, concurrency int, cgListMap map[string][]int, recordChan chan *sam.Record, resultChan chan string,
-	mappingQ, minSubDep, maxSubDep, radius int, scaleFlag bool) {
+func processAlignedHiFiFeature(wg *sync.WaitGroup, cgListMap map[string][]int, recordChan chan *sam.Record,
+	resultChan chan string, opts opt.Options) {
 	defer wg.Done()
 
+	concurrency := opts.Processor
+
 	pool := pool.New(concurrency)
+
 	for record := range recordChan {
-		w := worker.NewAlignedHiFiFeatureWorker(record, cgListMap, resultChan, mappingQ, minSubDep, maxSubDep, radius, scaleFlag)
+		w := worker.NewAlignedHiFiFeatureWorker(record, cgListMap, resultChan, opts)
 		pool.Run(&w)
 	}
 	pool.Shutdown()
@@ -373,13 +417,14 @@ func processAlignedHiFiFeature(wg *sync.WaitGroup, concurrency int, cgListMap ma
 	close(resultChan)
 }
 
-func processTopHiFiFeature(wg *sync.WaitGroup, concurrency int, recordChan chan *sam.Record, resultChan chan string,
-	mappingQ, minSubDep, maxSubDep, radius int, scaleFlag bool) {
+func processTopHiFiFeature(wg *sync.WaitGroup, recordChan chan *sam.Record, resultChan chan string, opts opt.Options) {
 	defer wg.Done()
+
+	concurrency := opts.Processor
 
 	pool := pool.New(concurrency)
 	for record := range recordChan {
-		w := worker.NewTopHiFiFeatureWorker(record, resultChan, mappingQ, minSubDep, maxSubDep, radius, scaleFlag)
+		w := worker.NewTopHiFiFeatureWorker(record, resultChan, opts)
 		pool.Run(&w)
 	}
 	pool.Shutdown()
@@ -387,13 +432,15 @@ func processTopHiFiFeature(wg *sync.WaitGroup, concurrency int, recordChan chan 
 	close(resultChan)
 }
 
-func processTopHiFiPredict(wg *sync.WaitGroup, concurrency int, model *tf.SavedModel, recordChan chan *sam.Record, resultChan chan *sam.Record,
-	mappingQ, minSubDep, maxSubDep, radius int, scaleFlag bool, keepK string) {
+func processTopHiFiPredict(wg *sync.WaitGroup, model *tf.SavedModel, recordChan chan *sam.Record,
+	resultChan chan *sam.Record, opts opt.Options) {
 	defer wg.Done()
+
+	concurrency := opts.Processor
 
 	pool := pool.New(concurrency)
 	for record := range recordChan {
-		w := worker.NewTopHiFiPredictWorker(model, record, resultChan, mappingQ, minSubDep, maxSubDep, radius, scaleFlag, keepK)
+		w := worker.NewTopHiFiPredictWorker(model, record, resultChan, opts)
 		pool.Run(&w)
 	}
 	pool.Shutdown()

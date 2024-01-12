@@ -2,6 +2,7 @@ package worker
 
 import (
 	"fmt"
+	"github.com/Taichidasheen/read_predict/pkg/opt"
 	"github.com/biogo/hts/sam"
 	"log"
 	"strings"
@@ -11,33 +12,35 @@ type AlignedHiFiFeatureWorker struct {
 	record     *sam.Record
 	cgListMap  map[string][]int
 	resultChan chan string
-	mappingQ   int
-	minSubDep  int
-	maxSubDep  int
-	radius     int
-	scaleFlag  bool
-	err        error
+	opts       opt.Options
+	//mappingQ   int
+	//minSubDep  int
+	//maxSubDep  int
+	//radius     int
+	//scaleFlag  bool
+	err error
 }
 
-func NewAlignedHiFiFeatureWorker(record *sam.Record, cgListMap map[string][]int, resultChan chan string,
-	mappingQ, minSubDep, maxSubDep, radius int, scaleFlag bool) AlignedHiFiFeatureWorker {
+func NewAlignedHiFiFeatureWorker(record *sam.Record, cgListMap map[string][]int,
+	resultChan chan string, opts opt.Options) AlignedHiFiFeatureWorker {
 	return AlignedHiFiFeatureWorker{
 		record:     record,
 		cgListMap:  cgListMap,
 		resultChan: resultChan,
-		mappingQ:   mappingQ,
-		minSubDep:  minSubDep,
-		maxSubDep:  maxSubDep,
-		radius:     radius,
-		scaleFlag:  scaleFlag,
+		opts:       opts,
+		//mappingQ:   mappingQ,
+		//minSubDep:  minSubDep,
+		//maxSubDep:  maxSubDep,
+		//radius:     radius,
+		//scaleFlag:  scaleFlag,
 	}
 }
 
 func (w *AlignedHiFiFeatureWorker) Task(num int) {
 	record := w.record
-	radius := w.radius
-	scaleFlag := w.scaleFlag
-	if !isSecondary(record.Flags) && !isSupplementary(record.Flags) && int(record.MapQ) > w.mappingQ && matchingRatio(record) >= 0.85 {
+	radius := w.opts.Radius
+	scaleFlag := w.opts.ScaleFlag
+	if !isSecondary(record.Flags) && !isSupplementary(record.Flags) && int(record.MapQ) > w.opts.MappingQ && matchingRatio(record) >= 0.85 {
 		recordTag, err := extractRecordTag(record)
 		if err != nil {
 			log.Printf("extractRecordTag err:%v", err)
@@ -47,7 +50,7 @@ func (w *AlignedHiFiFeatureWorker) Task(num int) {
 		fn := recordTag.Fn
 		rn := recordTag.Rn
 		totalSubreadsDep := fn + rn
-		if totalSubreadsDep >= int32(w.minSubDep) && totalSubreadsDep <= int32(w.maxSubDep) && fn >= 1 && rn >= 1 {
+		if totalSubreadsDep >= int32(w.opts.MinSubDep) && totalSubreadsDep <= int32(w.opts.MaxSubDep) && fn >= 1 && rn >= 1 {
 			alnRefChr := record.Ref.Name()
 			alnRefStart := record.Pos
 			alnRefEnd := record.End()
@@ -67,10 +70,8 @@ func (w *AlignedHiFiFeatureWorker) Task(num int) {
 				readName := record.Name
 				parts := strings.Split(readName, "/")
 				zmwname := parts[0] + "_" + parts[1]
-				haplotype := recordTag.HP
-				haploTypeBlock := recordTag.PS
 
-				locatedCpgs, cpgPosOnRead := locateCpgPosOnRead(alnRefStart, readCigar, overlappingCpg)
+				locatedCpgs, cpgPosOnRead := locateCpgPosOnSeq(alnRefStart, readCigar, overlappingCpg)
 				log.Printf("readName:%s, len(overlappingCpg):%d, len(locatedCpgs):%d", readName, len(overlappingCpg), len(locatedCpgs))
 				log.Printf("locatedCpgs:%+v", locatedCpgs)
 
@@ -102,9 +103,9 @@ func (w *AlignedHiFiFeatureWorker) Task(num int) {
 						rIPDPart := formatSlice(feature.ComTemplateIPDList)
 						rPWPart := formatSlice(feature.ComTemplatePWList)
 
-						outputZMWLine := fmt.Sprintf("%s\t%d\t%s\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s",
+						outputZMWLine := fmt.Sprintf("%s\t%d\t%s\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s",
 							alnRefChr, cpg, zmwname, fn, rn, fTemplateSeqStr, fIPDPart, fPWPart,
-							rTemplateSeqStr, rIPDPart, rPWPart, haplotype, haploTypeBlock)
+							rTemplateSeqStr, rIPDPart, rPWPart)
 						w.resultChan <- outputZMWLine
 
 					}
