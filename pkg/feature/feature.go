@@ -1,7 +1,8 @@
-package worker
+package feature
 
 import (
 	"fmt"
+	"github.com/Taichidasheen/read_predict/pkg/util"
 	"github.com/montanaflynn/stats"
 	"log"
 	"math"
@@ -62,7 +63,7 @@ func HiFiRead_cpg_K_Feature(posOnSeq int, readIsReverse bool, radius int, readQu
 			}
 			//fTemplateSeq = reverseSlice(readSeqList)[leftRefFCOnFList:rightRefFCOnFList]
 			//fTemplateSeq = reverseSliceByte(readSeqList)[leftRefFCOnFList:rightRefFCOnFList]
-			templateSeq = reverseSliceByte(readSeqList[posOnSeq-radius : posOnSeq+radius+1])
+			templateSeq = util.ReverseSliceByte(readSeqList[posOnSeq-radius : posOnSeq+radius+1])
 		}
 		//(2)
 		//For subreads mapped to Ref_F_strand, which carrying information when syn the complementary R_strand, key 'R' #
@@ -82,8 +83,8 @@ func HiFiRead_cpg_K_Feature(posOnSeq int, readIsReverse bool, radius int, readQu
 				return nil, err
 			}
 			comTemplateSeq = seqComplementary(readSeqList[leftRefRCOnRList:rightRefRCOnRList])
-			comTemplateIPDList = reverseSlice(comTemplateIPDList)
-			comTemplatePWList = reverseSlice(comTemplatePWList)
+			comTemplateIPDList = util.ReverseSlice(comTemplateIPDList)
+			comTemplatePWList = util.ReverseSlice(comTemplatePWList)
 		}
 
 	} else { //this hifi read aligned to Ref_F_strand
@@ -124,9 +125,9 @@ func HiFiRead_cpg_K_Feature(posOnSeq int, readIsReverse bool, radius int, readQu
 				log.Printf("getkineticswin err:%+v", err)
 				return nil, err
 			}
-			comTemplateSeq = reverseSliceByte(readSeqList[posOnSeq-radius : posOnSeq+radius+1])
-			comTemplateIPDList = reverseSlice(comTemplateIPDList)
-			comTemplatePWList = reverseSlice(comTemplatePWList)
+			comTemplateSeq = util.ReverseSliceByte(readSeqList[posOnSeq-radius : posOnSeq+radius+1])
+			comTemplateIPDList = util.ReverseSlice(comTemplateIPDList)
+			comTemplatePWList = util.ReverseSlice(comTemplatePWList)
 		}
 	}
 
@@ -139,7 +140,7 @@ func HiFiRead_cpg_K_Feature(posOnSeq int, readIsReverse bool, radius int, readQu
 		ComTemplatePWList:  comTemplatePWList,
 	}
 	if featureHasEmptyField(feature) {
-		log.Printf("feature has empty field, posOnRead:%d, feature:%+v", posOnSeq, feature)
+		log.Printf("feature has empty field, posOnSeq:%d, feature:%+v", posOnSeq, feature)
 		return nil, fmt.Errorf("empty feature field")
 	}
 
@@ -152,53 +153,6 @@ func featureHasEmptyField(feature *Feature) bool {
 		return true
 	}
 	return false
-}
-
-type SubReadFeature struct {
-	IPDList     []uint8
-	PWList      []uint8
-	TemplateSeq []byte
-	StrandSign  byte
-}
-
-/*
-	 	2024-01-03: subreads keep raw ipd/pw for each of them
-		2024-01-02: return Seq_context_on_Template(3'->5'), ipd, pw
-*/
-func SubRead_cpg_K_Feature(posOnRead int, readIsReverse bool, radius int, readQueryLength int, readSeqList []byte,
-	readIPDList, readPWList []uint8) *SubReadFeature {
-	var ipdList, pwList []uint8
-	var templateSeq []byte
-	var strandSign byte
-
-	//# subreads mapped to Ref(-)_strand, synthesising the Ref(+)_template, ipd/pw are therefor with respected to Ref(+). Template is Ref(+), but should be reverse into 3'-5'
-	if readIsReverse {
-		//5'->3' position on read
-		adjustPosOnRead := readQueryLength - posOnRead - 1
-		lPos := adjustPosOnRead - radius - 1
-		rPos := adjustPosOnRead + radius
-		strandSign = 'F' //'Ref(+)'#Template strand sign
-		ipdList = readIPDList[lPos:rPos]
-		pwList = readPWList[lPos:rPos]
-		templateSeq = reverseSliceByte(readSeqList[posOnRead-radius : posOnRead+radius+1])
-	} else {
-		//subreads mapped to Ref(+), synthesising the Ref(-)_template, ipd/pw are therefor with respected to Ref(-). Template is Ref(-), and should be adjusted to 3'->5'
-		//5'->3' position on read
-		adjustPosOnRead := posOnRead + 1
-		lPos := adjustPosOnRead - radius - 1
-		rPos := adjustPosOnRead + radius
-		strandSign = 'R' //'Ref(-)'
-		ipdList = readIPDList[lPos:rPos]
-		pwList = readPWList[lPos:rPos]
-		templateSeq = seqComplementary(readSeqList[posOnRead-radius : posOnRead+radius+1])
-	}
-	sfeature := &SubReadFeature{
-		TemplateSeq: templateSeq,
-		IPDList:     ipdList,
-		PWList:      pwList,
-		StrandSign:  strandSign,
-	}
-	return sfeature
 }
 
 // 计算反向互补序列
@@ -300,4 +254,135 @@ func round(val float64, precision int) float64 {
 	}
 
 	return math.Floor(val*p+0.5) / p
+}
+
+// 构造 13 x winsize矩阵
+func formatClosedZMW(feature *Feature, npasses float32) [][]float32 {
+
+	/*start := time.Now()
+	defer func() {
+		log.Println("formatClosedZMW cost:", time.Since(start))
+	}()*/
+
+	var matrix [][]float32
+	fTemplateSeq := feature.TemplateSeq
+	fIPDList := feature.TemplateIPDList
+	fPWList := feature.TemplatePWList
+	rTemplateSeq := feature.ComTemplateSeq
+	rIPDList := feature.ComTemplateIPDList
+	rPWList := feature.ComTemplatePWList
+
+	winsize := len(fIPDList)
+	if len(fTemplateSeq) != winsize || len(rTemplateSeq) != winsize {
+		log.Printf("winsize:%d, fTemplateSeq:%s, rTemplateSeq:%s", winsize, string(fTemplateSeq), string(rTemplateSeq))
+		return nil
+	}
+	seqDict := map[byte]int{'A': 0, 'T': 1, 'C': 2, 'G': 3}
+
+	fseqMatArray := make([][]float32, 4)
+	for i := 0; i < 4; i++ {
+		fseqMatArray[i] = make([]float32, winsize)
+	}
+
+	rseqMatArray := make([][]float32, 4)
+	for i := 0; i < 4; i++ {
+		rseqMatArray[i] = make([]float32, winsize)
+	}
+
+	var npassesArr []float32
+
+	//构造fseqMatArray，rseqMatArray，npassesArr
+	for i := 0; i < winsize; i++ {
+		fbase := fTemplateSeq[i]
+		fseqMatArray[seqDict[fbase]][i] = 1
+		rbase := rTemplateSeq[i]
+		rseqMatArray[seqDict[rbase]][i] = 1
+		npassesArr = append(npassesArr, npasses)
+	}
+
+	//13 x winsize matrix
+	matrix = append(matrix, fseqMatArray...)
+	matrix = append(matrix, fIPDList, fPWList)
+	matrix = append(matrix, rseqMatArray...)
+	matrix = append(matrix, rIPDList, rPWList, npassesArr)
+
+	return matrix
+}
+
+func transpose2D(plane [][]float32) [][]float32 {
+	rows := len(plane)
+	cols := len(plane[0])
+
+	result := make([][]float32, cols)
+	for i := range result {
+		result[i] = make([]float32, rows)
+	}
+
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
+			result[j][i] = plane[i][j]
+		}
+	}
+	return result
+}
+
+// 实现 np.transpose(X_reads, (0, 2, 1))
+func transpose3D(cube [][][]float32) [][][]float32 {
+	/*start := time.Now()
+	defer func() {
+		log.Println("transpose3D cost:", time.Since(start))
+	}()*/
+
+	var result [][][]float32
+	for _, plane := range cube {
+		posedPlane := transpose2D(plane)
+		result = append(result, posedPlane)
+	}
+	return result
+}
+
+// 构造 winsize x 13 矩阵
+func FormatTransposedClosedZMW(feature *Feature, npasses float32) [][]float32 {
+
+	/*start := time.Now()
+	defer func() {
+		log.Println("formatTransposedClosedZMW cost:", time.Since(start))
+	}()*/
+
+	fTemplateSeq := feature.TemplateSeq
+	fIPDList := feature.TemplateIPDList
+	fPWList := feature.TemplatePWList
+	rTemplateSeq := feature.ComTemplateSeq
+	rIPDList := feature.ComTemplateIPDList
+	rPWList := feature.ComTemplatePWList
+
+	winsize := len(fIPDList)
+	if len(fTemplateSeq) != winsize || len(rTemplateSeq) != winsize {
+		log.Printf("winsize:%d, fTemplateSeq:%s, rTemplateSeq:%s", winsize, string(fTemplateSeq), string(rTemplateSeq))
+		return nil
+	}
+	seqDict := map[byte]int{'A': 0, 'T': 1, 'C': 2, 'G': 3}
+
+	//winsize x 13 matrix
+	matrix := make([][]float32, winsize)
+	for i, _ := range matrix {
+		matrix[i] = make([]float32, 13)
+	}
+
+	for i := 0; i < winsize; i++ {
+		//ATCG, fi, fp
+		fbase := fTemplateSeq[i]
+		matrix[i][seqDict[fbase]] = 1
+		matrix[i][4] = fIPDList[i]
+		matrix[i][5] = fPWList[i]
+
+		//ATCG, ri, rp
+		rbase := rTemplateSeq[i]
+		matrix[i][6+seqDict[rbase]] = 1
+		matrix[i][10] = rIPDList[i]
+		matrix[i][11] = rPWList[i]
+		matrix[i][12] = npasses
+	}
+
+	return matrix
 }

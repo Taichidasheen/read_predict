@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/Taichidasheen/read_predict/pkg/opt"
 	"github.com/Taichidasheen/read_predict/pkg/pool"
+	"github.com/Taichidasheen/read_predict/pkg/subread"
 	"github.com/Taichidasheen/read_predict/pkg/worker"
 	"github.com/biogo/hts/bam"
 	"github.com/biogo/hts/bgzf"
@@ -127,31 +128,63 @@ func main() {
 	var wg sync.WaitGroup
 
 	var taskName string
-	if inType == "unaligned" {
-		if outputType == "Feature" {
-			taskName = inType + "_" + outputType
-			wg.Add(3)
-			recordChan := make(chan *sam.Record, 1000)
-			resultChan := make(chan string, 3000)
-			//predictResultChan := make(chan *sam.Record, 1000)
+	if datatype == "HIFI" {
+		if inType == "unaligned" {
+			if outputType == "Feature" {
+				taskName = inType + "_" + outputType
+				wg.Add(3)
+				recordChan := make(chan *sam.Record, 1000)
+				resultChan := make(chan string, 3000)
+				//predictResultChan := make(chan *sam.Record, 1000)
 
-			//读取bam文件
-			go readBam(&wg, recordChan, bamFilePath, topN)
+				//读取bam文件
+				go readBam(&wg, recordChan, bamFilePath, topN)
 
-			//异步处理record
-			go processTopHiFiFeature(&wg, recordChan, resultChan, opts)
+				//异步处理record
+				go processTopHiFiFeature(&wg, recordChan, resultChan, opts)
 
-			//resultPath := "/storage/yangjianLab/westlakechat/subreads_locate/result.txt"
-			//异步写入result
-			go writeGzipResult(&wg, outPrefix, resultChan)
-			//bamHeader := bamReader.Header()
-			//go writeBamRecord(&wg, bamHeader, outPrefix, predictResultChan)
+				//resultPath := "/storage/yangjianLab/westlakechat/subreads_locate/result.txt"
+				//异步写入result
+				go writeTextResult(&wg, outPrefix, resultChan)
+				//bamHeader := bamReader.Header()
+				//go writeBamRecord(&wg, bamHeader, outPrefix, predictResultChan)
+			}
+		}
+
+		if inType == "aligned" {
+			if outputType == "Feature" {
+				taskName = inType + "_" + outputType
+				//load cgList
+				cgListMap, err := buildCgListMap(cpgBed, chromosome)
+				if err != nil {
+					log.Fatalf("buildCgListMap err:%v", err)
+					return
+				}
+				log.Println("len(cgListMap):", len(cgListMap))
+
+				wg.Add(3)
+				recordChan := make(chan *sam.Record, 1000)
+				resultChan := make(chan string, 3000)
+				//predictResultChan := make(chan *sam.Record, 1000)
+
+				//读取bam文件
+				go readBam(&wg, recordChan, bamFilePath, topN)
+
+				//异步处理record
+				go processAlignedHiFiFeature(&wg, cgListMap, recordChan, resultChan, opts)
+
+				//resultPath := "/storage/yangjianLab/westlakechat/subreads_locate/result.txt"
+				//异步写入result
+				go writeTextResult(&wg, outPrefix, resultChan)
+				//bamHeader := bamReader.Header()
+				//go writeBamRecord(&wg, bamHeader, outPrefix, predictResultChan)
+			}
 		}
 	}
 
-	if inType == "aligned" {
+	if datatype == "SUBREAD" {
 		if outputType == "Feature" {
-			taskName = inType + "_" + outputType
+			taskName = datatype + "_" + inType + "_" + outputType
 			//load cgList
 			cgListMap, err := buildCgListMap(cpgBed, chromosome)
 			if err != nil {
@@ -160,22 +193,59 @@ func main() {
 			}
 			log.Println("len(cgListMap):", len(cgListMap))
 
+			bamFile, err := os.Open(bamFilePath)
+			if err != nil {
+				log.Fatalf("could not open file %q:", err)
+				return
+			}
+			defer bamFile.Close()
+			ok, err := bgzf.HasEOF(bamFile)
+			if err != nil {
+				log.Fatalf("could not open file %q:", err)
+				return
+			}
+			if !ok {
+				log.Printf("file has no bgzf magic block: may be truncated")
+				return
+			}
+			//读写并发度
+			concurrency := 5
+			//bam reader
+			bamReader, err := bam.NewReader(bamFile, concurrency)
+			if err != nil {
+				log.Fatalf("could not read bam:%v", err)
+				return
+			}
+			defer bamReader.Close()
+
+			//获取ref
+			bamHeader := bamReader.Header()
+			refs := bamHeader.Refs()
+			refOrderMap := make(map[string]int)
+			for i := 0; i < len(refs); i++ {
+				refChr := refs[i].Name()
+				refOrderMap[refChr] = i
+			}
+			//log.Println("refOrderMap:", refOrderMap)
+
 			wg.Add(3)
 			recordChan := make(chan *sam.Record, 1000)
 			resultChan := make(chan string, 3000)
-			//predictResultChan := make(chan *sam.Record, 1000)
 
 			//读取bam文件
-			go readBam(&wg, recordChan, bamFilePath, topN)
+			go subread.ReadSubreadsBam(&wg, recordChan, bamReader, topN)
+			//go subread.ReadSubreadsBamAndProcess(&wg, resultChan, opts, bamFilePath, topN, cgListMap)
+			//处理record
+			go subread.ProcessRecordChan(&wg, resultChan, recordChan, opts, refOrderMap, cgListMap)
 
-			//异步处理record
-			go processAlignedHiFiFeature(&wg, cgListMap, recordChan, resultChan, opts)
-
-			//resultPath := "/storage/yangjianLab/westlakechat/subreads_locate/result.txt"
 			//异步写入result
-			go writeGzipResult(&wg, outPrefix, resultChan)
-			//bamHeader := bamReader.Header()
-			//go writeBamRecord(&wg, bamHeader, outPrefix, predictResultChan)
+			go writeTextResult(&wg, outPrefix, resultChan)
+
+		}
+
+		//predict
+		if outputType == "MoleculeLevel" {
+
 		}
 	}
 

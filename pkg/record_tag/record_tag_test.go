@@ -1,11 +1,11 @@
-package worker
+package record_tag
 
 import "testing"
 
 func Test_genMMTag(t *testing.T) {
 
 	readSeqString := "AGTCTAGACTCCGTAATTACTCGCCTAG"
-	aux, err := genMMTag(readSeqString)
+	aux, err := GenMMTag(readSeqString)
 	if err != nil {
 		t.Errorf("err:%v", err)
 		return

@@ -1,8 +1,62 @@
-package worker
+package feature
 
 import (
 	"testing"
 )
+
+func Test_getkineticswin(t *testing.T) {
+	nums := []uint8{1, 2, 3}
+	kwin, err := getkineticswin(nums, true)
+	if err != nil {
+		t.Errorf("err:%+v", err)
+		return
+	}
+	t.Logf("kwin:%+v", kwin)
+
+	nums = []uint8{11, 12, 13, 14}
+	kwin, err = getkineticswin(nums, true)
+	if err != nil {
+		t.Errorf("err:%+v", err)
+		return
+	}
+	t.Logf("kwin:%+v", kwin)
+
+	nums = []uint8{1, 1, 1}
+	kwin, err = getkineticswin(nums, true)
+	if err != nil {
+		t.Errorf("err:%+v", err)
+		return
+	}
+	t.Logf("kwin:%+v", kwin)
+
+}
+
+func Test_getkineticswinQuick(t *testing.T) {
+	nums := []uint8{1, 2, 3}
+	kwin, err := getkineticswinQuick(nums, true)
+	if err != nil {
+		t.Errorf("err:%+v", err)
+		return
+	}
+	t.Logf("kwin:%+v", kwin)
+
+	nums = []uint8{11, 12, 13, 14}
+	kwin, err = getkineticswinQuick(nums, true)
+	if err != nil {
+		t.Errorf("err:%+v", err)
+		return
+	}
+	t.Logf("kwin:%+v", kwin)
+
+	nums = []uint8{1, 1, 1}
+	kwin, err = getkineticswinQuick(nums, true)
+	if err != nil {
+		t.Errorf("err:%+v", err)
+		return
+	}
+	t.Logf("kwin:%+v", kwin)
+
+}
 
 func Test_transpose2D(t *testing.T) {
 	reads := [][]float32{
@@ -57,7 +111,7 @@ func Test_formatTransposedClosedZMW(t *testing.T) {
 		ComTemplateIPDList: rIPDList,
 		ComTemplatePWList:  rPWList,
 	}
-	transpose := formatTransposedClosedZMW(feature, npasses)
+	transpose := FormatTransposedClosedZMW(feature, npasses)
 	t.Logf("transpose matrix:%+v", transpose)
 
 }

@@ -1,4 +1,4 @@
-package worker
+package record_tag
 
 import (
 	"fmt"
@@ -7,6 +7,7 @@ import (
 	"strings"
 )
 
+// RecordTag Notice:fn,rn这些tag在bam文件中是fn,rn(区分大小写)
 type RecordTag struct {
 	Fn int32
 	Rn int32
@@ -22,7 +23,7 @@ type RecordTag struct {
 	Pw []uint8
 }
 
-func extractRecordTag(record *sam.Record) (*RecordTag, error) {
+func ExtractRecordTag(record *sam.Record) (*RecordTag, error) {
 	//fn
 	fnAux, exist := record.Tag([]byte{'f', 'n'})
 	if !exist {
@@ -137,7 +138,7 @@ func extractRecordTag(record *sam.Record) (*RecordTag, error) {
 	return recordTag, nil
 }
 
-func extractSubreadsRecordTag(record *sam.Record) (*RecordTag, error) {
+func ExtractSubreadsRecordTag(record *sam.Record) (*RecordTag, error) {
 	//ip
 	ipAux, exist := record.Tag([]byte{'i', 'p'})
 	if !exist {
@@ -169,19 +170,7 @@ func extractSubreadsRecordTag(record *sam.Record) (*RecordTag, error) {
 	return recordTag, nil
 }
 
-func isReverse(flag sam.Flags) bool {
-	return flag&sam.Reverse == sam.Reverse
-}
-
-func isSecondary(flag sam.Flags) bool {
-	return flag&sam.Secondary == sam.Secondary
-}
-
-func isSupplementary(flag sam.Flags) bool {
-	return flag&sam.Supplementary == sam.Supplementary
-}
-
-func genMLTag(probes []float32) (sam.Aux, error) {
+func GenMLTag(probes []float32) (sam.Aux, error) {
 	arrLen := len(probes)
 	mlVal := make([]uint8, arrLen)
 	for i, prob := range probes {
@@ -191,7 +180,7 @@ func genMLTag(probes []float32) (sam.Aux, error) {
 	return sam.NewAux(sam.NewTag("ML"), mlVal)
 }
 
-func genMMTag(readSeqString string) (sam.Aux, error) {
+func GenMMTag(readSeqString string) (sam.Aux, error) {
 	countC := 0
 	var mmArr []string
 	//注意：这里是len(readSeqString)-1,如果是len(readSeqString)可能会数组越界
@@ -206,4 +195,46 @@ func genMMTag(readSeqString string) (sam.Aux, error) {
 	}
 	mmVal := "C+m," + strings.Join(mmArr, ",") + ";"
 	return sam.NewAux(sam.NewTag("MM"), mmVal)
+}
+
+func GenAlignedMMTag(topStrand []byte, featurePosOnRead []int) (sam.Aux, error) {
+	var mmArr []string
+
+	//注意：这里是len(featurePos)-1,如果是len(featurePos)可能会数组越界
+	for i := 0; i < len(featurePosOnRead)-1; i++ {
+		start := featurePosOnRead[i]
+		end := featurePosOnRead[i+1]
+		countC := 0
+
+		for j := start; j < end; j++ {
+			if topStrand[j] == 'C' {
+				countC++
+			}
+		}
+		mmArr = append(mmArr, fmt.Sprintf("%d", countC-1))
+	}
+	mmVal := "C+m," + strings.Join(mmArr, ",") + ";"
+	return sam.NewAux(sam.NewTag("MM"), mmVal)
+}
+
+func RemoveRecordTag(record *sam.Record) {
+	auxes := record.AuxFields
+	var newAuxes sam.AuxFields
+	for _, aux := range auxes {
+		tag := aux.Tag()
+		if tag[0] == 'f' && tag[1] == 'i' {
+			continue
+		}
+		if tag[0] == 'f' && tag[1] == 'p' {
+			continue
+		}
+		if tag[0] == 'r' && tag[1] == 'i' {
+			continue
+		}
+		if tag[0] == 'r' && tag[1] == 'p' {
+			continue
+		}
+		newAuxes = append(newAuxes, aux)
+	}
+	record.AuxFields = newAuxes
 }

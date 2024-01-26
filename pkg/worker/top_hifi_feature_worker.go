@@ -2,7 +2,10 @@ package worker
 
 import (
 	"fmt"
+	"github.com/Taichidasheen/read_predict/pkg/feature"
 	"github.com/Taichidasheen/read_predict/pkg/opt"
+	"github.com/Taichidasheen/read_predict/pkg/record_tag"
+	"github.com/Taichidasheen/read_predict/pkg/util"
 	"github.com/biogo/hts/sam"
 	"log"
 	"strings"
@@ -37,7 +40,7 @@ func (w *TopHiFiFeatureWorker) Task(num int) {
 	record := w.record
 	radius := w.opts.Radius
 	scaleFlag := w.opts.ScaleFlag
-	recordTag, err := extractRecordTag(record)
+	recordTag, err := record_tag.ExtractRecordTag(record)
 	if err != nil {
 		log.Printf("extractRecordTag err:%v", err)
 		w.err = err
@@ -73,19 +76,19 @@ func (w *TopHiFiFeatureWorker) Task(num int) {
 				}
 				//log.Printf("readName:%s, posOnRead:%d", readName, posOnRead)
 
-				feature, err := HiFiRead_cpg_K_Feature(posOnRead, readIsReverse, radius, readQueryLength, readSeqList, readFiList, readFpList, readRiList, readRpList, scaleFlag)
+				feat, err := feature.HiFiRead_cpg_K_Feature(posOnRead, readIsReverse, radius, readQueryLength, readSeqList, readFiList, readFpList, readRiList, readRpList, scaleFlag)
 				if err != nil {
 					log.Printf("HiFiRead_cpg_K_Feature err:%v, read name:%s", err, record.Name)
 					continue
 				}
 
 				//输出
-				fTemplateSeqStr := string(feature.TemplateSeq)
-				fIPDPart := formatSlice(feature.TemplateIPDList)
-				fPWPart := formatSlice(feature.TemplatePWList)
-				rTemplateSeqStr := string(feature.ComTemplateSeq)
-				rIPDPart := formatSlice(feature.ComTemplateIPDList)
-				rPWPart := formatSlice(feature.ComTemplatePWList)
+				fTemplateSeqStr := string(feat.TemplateSeq)
+				fIPDPart := util.FormatSlice(feat.TemplateIPDList)
+				fPWPart := util.FormatSlice(feat.TemplatePWList)
+				rTemplateSeqStr := string(feat.ComTemplateSeq)
+				rIPDPart := util.FormatSlice(feat.ComTemplateIPDList)
+				rPWPart := util.FormatSlice(feat.ComTemplatePWList)
 
 				outputZMWLine := fmt.Sprintf("Top\t%s\t%d\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s",
 					zmwname, posOnRead, fn, rn, fTemplateSeqStr, fIPDPart, fPWPart,

@@ -2,7 +2,13 @@ package worker
 
 import (
 	"fmt"
+	"github.com/Taichidasheen/read_predict/pkg/cpgpos"
+	"github.com/Taichidasheen/read_predict/pkg/feature"
 	"github.com/Taichidasheen/read_predict/pkg/opt"
+	"github.com/Taichidasheen/read_predict/pkg/predict"
+	"github.com/Taichidasheen/read_predict/pkg/record_flag"
+	"github.com/Taichidasheen/read_predict/pkg/record_tag"
+	"github.com/Taichidasheen/read_predict/pkg/util"
 	"github.com/biogo/hts/sam"
 	tf "github.com/wamuir/graft/tensorflow"
 	"log"
@@ -16,13 +22,7 @@ type AlignedHiFiPredictWorker struct {
 	textResultChan chan string
 	bamResultChan  chan *sam.Record
 	opts           opt.Options
-	//mappingQ   int
-	//minSubDep  int
-	//maxSubDep  int
-	//radius     int
-	//scaleFlag  bool
-	//outputType string
-	err error
+	err            error
 }
 
 func NewAlignedHiFiPredictWorker(model *tf.SavedModel, record *sam.Record, cgListMap map[string][]int,
@@ -34,12 +34,6 @@ func NewAlignedHiFiPredictWorker(model *tf.SavedModel, record *sam.Record, cgLis
 		textResultChan: textResultChan,
 		bamResultChan:  bamResultChan,
 		opts:           opts,
-		//mappingQ:   mappingQ,
-		//minSubDep:  minSubDep,
-		//maxSubDep:  maxSubDep,
-		//radius:     radius,
-		//scaleFlag:  scaleFlag,
-		//outputType: outputType,
 	}
 }
 
@@ -49,8 +43,8 @@ func (w *AlignedHiFiPredictWorker) Task(num int) {
 	radius := w.opts.Radius
 	scaleFlag := w.opts.ScaleFlag
 	keepK := w.opts.KeepK
-	if !isSecondary(record.Flags) && !isSupplementary(record.Flags) && int(record.MapQ) > w.opts.MappingQ && matchingRatio(record) >= 0.85 {
-		recordTag, err := extractRecordTag(record)
+	if !record_flag.IsSecondary(record.Flags) && !record_flag.IsSupplementary(record.Flags) && int(record.MapQ) > w.opts.MappingQ && record_flag.MatchingRatio(record) >= 0.85 {
+		recordTag, err := record_tag.ExtractRecordTag(record)
 		if err != nil {
 			log.Printf("extractRecordTag err:%v", err)
 			w.err = err
@@ -65,7 +59,7 @@ func (w *AlignedHiFiPredictWorker) Task(num int) {
 			alnRefEnd := record.End()
 			log.Printf("alnRefStart:%d, alnRefEnd:%d", alnRefStart, alnRefEnd)
 			cgList := w.cgListMap[alnRefChr]
-			overlappingCpg := findOverlappingCpg(cgList, alnRefStart, alnRefEnd)
+			overlappingCpg := cpgpos.FindOverlappingCpg(cgList, alnRefStart, alnRefEnd)
 			log.Printf("overlappingCpg:%+v", overlappingCpg)
 			if len(overlappingCpg) >= 1 {
 				readFiList := recordTag.Fi
@@ -73,12 +67,12 @@ func (w *AlignedHiFiPredictWorker) Task(num int) {
 				readRiList := recordTag.Ri
 				readRpList := recordTag.Rp
 				readSeqList := record.Seq.Expand()
-				readIsReverse := isReverse(record.Flags)
+				readIsReverse := record_flag.IsReverse(record.Flags)
 				readQueryLength := len(readSeqList)
 				readCigar := record.Cigar
 				readName := record.Name
 
-				locatedCpgs, cpgPosOnSeq := locateCpgPosOnSeq(alnRefStart, readCigar, overlappingCpg)
+				locatedCpgs, cpgPosOnSeq := cpgpos.LocateCpgPosOnSeq(alnRefStart, readCigar, overlappingCpg)
 				log.Printf("readName:%s, len(overlappingCpg):%d, len(locatedCpgs):%d", readName, len(overlappingCpg), len(locatedCpgs))
 				log.Printf("locatedCpgs:%+v", locatedCpgs)
 
@@ -98,13 +92,13 @@ func (w *AlignedHiFiPredictWorker) Task(num int) {
 						}
 						//log.Printf("readName:%s, cpg:%d, posOnRead:%d", readName, cpg, posOnRead)
 
-						feature, err := HiFiRead_cpg_K_Feature(posOnSeq, readIsReverse, radius, readQueryLength, readSeqList, readFiList, readFpList, readRiList, readRpList, scaleFlag)
+						feat, err := feature.HiFiRead_cpg_K_Feature(posOnSeq, readIsReverse, radius, readQueryLength, readSeqList, readFiList, readFpList, readRiList, readRpList, scaleFlag)
 						if err != nil {
 							log.Printf("HiFiRead_cpg_K_Feature err:%v, read name:%s", err, record.Name)
 							continue
 						}
 
-						mat := formatTransposedClosedZMW(feature, float32(totalSubreadsDep))
+						mat := feature.FormatTransposedClosedZMW(feat, float32(totalSubreadsDep))
 						xReads = append(xReads, mat)
 						featurePosOnSeq = append(featurePosOnSeq, posOnSeq)
 					}
@@ -112,7 +106,7 @@ func (w *AlignedHiFiPredictWorker) Task(num int) {
 					log.Printf("readName:%s,  len(cpgPosOnSeq):%d, len(xReads):%d", record.Name, len(cpgPosOnSeq), len(xReads))
 
 					//predict
-					probes, err := predict(model, xReads)
+					probes, err := predict.Predict(model, xReads)
 					if err != nil {
 						log.Printf("predict err:%+v, read name:%s, input:%+v", err, record.Name, xReads)
 						w.err = err
@@ -137,7 +131,7 @@ func (w *AlignedHiFiPredictWorker) Task(num int) {
 	}
 }
 
-func moleculeLevelOut(record *sam.Record, recordTag *RecordTag, featurePosOnSeq []int, probes []float32, textResultChan chan string) {
+func moleculeLevelOut(record *sam.Record, recordTag *record_tag.RecordTag, featurePosOnSeq []int, probes []float32, textResultChan chan string) {
 	alnRefChr := record.Ref.Name()
 	readName := record.Name
 	parts := strings.Split(readName, "/")
@@ -171,7 +165,7 @@ func moleculeLevelOut(record *sam.Record, recordTag *RecordTag, featurePosOnSeq 
 
 func modBamOut(record *sam.Record, keepK string, featurePosOnSeq []int, probes []float32, bamResultChan chan *sam.Record) error {
 	readSeqList := record.Seq.Expand()
-	readIsReverse := isReverse(record.Flags)
+	readIsReverse := record_flag.IsReverse(record.Flags)
 	readQueryLength := len(readSeqList)
 
 	var topStrand []byte
@@ -179,8 +173,8 @@ func modBamOut(record *sam.Record, keepK string, featurePosOnSeq []int, probes [
 
 	// 2024-01-05: need to distinguish +- strand, since MM,ML tag is with respected to top_strand(5'->3')
 	if readIsReverse {
-		probes = reverseSlice(probes)
-		topStrand = seqComplementary(reverseSliceByte(readSeqList))
+		probes = util.ReverseSlice(probes)
+		topStrand = seqComplementary(util.ReverseSliceByte(readSeqList))
 		featurePosOnRead = convertPosOnSeq2PosOnReadSlice(readQueryLength, featurePosOnSeq)
 	} else {
 		topStrand = readSeqList
@@ -188,12 +182,12 @@ func modBamOut(record *sam.Record, keepK string, featurePosOnSeq []int, probes [
 	}
 
 	//计算ML tag和MM tag
-	mlTag, err := genMLTag(probes)
+	mlTag, err := record_tag.GenMLTag(probes)
 	if err != nil {
 		log.Printf("genMLTag err:%+v, read name:%s", err, record.Name)
 		return err
 	}
-	mmTag, err := genAlignedMMTag(topStrand, featurePosOnRead)
+	mmTag, err := record_tag.GenAlignedMMTag(topStrand, featurePosOnRead)
 	if err != nil {
 		log.Printf("genMMTag err:%+v, read name:%s", err, record.Name)
 		return err
@@ -201,7 +195,7 @@ func modBamOut(record *sam.Record, keepK string, featurePosOnSeq []int, probes [
 	record.AuxFields = append(record.AuxFields, mlTag)
 	record.AuxFields = append(record.AuxFields, mmTag)
 	if keepK == "remove" {
-		removeRecordTag(record)
+		record_tag.RemoveRecordTag(record)
 	}
 	//写出到channel
 	bamResultChan <- record
@@ -235,22 +229,22 @@ func convertPosOnSeq2PosOnReadSlice(readLength int, posOnSeq []int) []int {
 	return posOnRead
 }
 
-func genAlignedMMTag(topStrand []byte, featurePosOnRead []int) (sam.Aux, error) {
-	var mmArr []string
-
-	//注意：这里是len(featurePos)-1,如果是len(featurePos)可能会数组越界
-	for i := 0; i < len(featurePosOnRead)-1; i++ {
-		start := featurePosOnRead[i]
-		end := featurePosOnRead[i+1]
-		countC := 0
-
-		for j := start; j < end; j++ {
-			if topStrand[j] == 'C' {
-				countC++
-			}
+// 计算反向互补序列
+func seqComplementary(seq []byte) []byte {
+	complementedSeq := make([]byte, len(seq))
+	for i := 0; i < len(seq); i++ {
+		switch seq[i] {
+		case 'A':
+			complementedSeq[i] = 'T'
+		case 'T':
+			complementedSeq[i] = 'A'
+		case 'C':
+			complementedSeq[i] = 'G'
+		case 'G':
+			complementedSeq[i] = 'C'
+		default:
+			log.Println("invalid bytes:", seq[i])
 		}
-		mmArr = append(mmArr, fmt.Sprintf("%d", countC-1))
 	}
-	mmVal := "C+m," + strings.Join(mmArr, ",") + ";"
-	return sam.NewAux(sam.NewTag("MM"), mmVal)
+	return complementedSeq
 }

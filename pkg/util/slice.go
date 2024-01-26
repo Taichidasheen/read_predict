@@ -1,4 +1,4 @@
-package worker
+package util
 
 import (
 	"fmt"
@@ -14,7 +14,7 @@ import (
 	return res
 }*/
 
-func reverseSliceGeneric[T any](arr []T) []T {
+func ReverseSliceGeneric[T any](arr []T) []T {
 	res := make([]T, len(arr))
 	length := len(arr)
 	for i := length - 1; i >= 0; i-- {
@@ -23,7 +23,7 @@ func reverseSliceGeneric[T any](arr []T) []T {
 	return res
 }
 
-func reverseSlice(arr []float32) []float32 {
+func ReverseSlice(arr []float32) []float32 {
 
 	res := make([]float32, len(arr))
 	length := len(arr)
@@ -33,7 +33,7 @@ func reverseSlice(arr []float32) []float32 {
 	return res
 }
 
-func reverseSliceByte(arr []byte) []byte {
+func ReverseSliceByte(arr []byte) []byte {
 
 	res := make([]byte, len(arr))
 	length := len(arr)
@@ -45,7 +45,7 @@ func reverseSliceByte(arr []byte) []byte {
 }
 
 // rbegin和rend表示对于反转后的arr数组，返回从rbegin到rend(不包括rend)区间内的元素
-func reverseSliceByteByIndex(arr []byte, rbegin, rend int) []byte {
+func ReverseSliceByteByIndex(arr []byte, rbegin, rend int) []byte {
 
 	scope := rend - rbegin
 	res := make([]byte, scope)
@@ -64,7 +64,7 @@ func reverseSliceByteByIndex(arr []byte, rbegin, rend int) []byte {
 	return res
 }
 
-func formatSlice[T any](arr []T) string {
+func FormatSlice[T any](arr []T) string {
 	strs := make([]string, len(arr))
 	for i, num := range arr {
 		strs[i] = fmt.Sprintf("%v", num)

@@ -2,8 +2,11 @@ package worker
 
 import (
 	"fmt"
-	"github.com/Taichidasheen/read_predict/pkg/util"
+	"github.com/Taichidasheen/read_predict/pkg/cpgpos"
+	"github.com/Taichidasheen/read_predict/pkg/record_flag"
+	"github.com/Taichidasheen/read_predict/pkg/record_tag"
 	"github.com/biogo/hts/sam"
+	"github.com/montanaflynn/stats"
 	"log"
 	"strings"
 )
@@ -39,8 +42,8 @@ func (w *LocateWorker) Task(num int) {
 	radius := w.radius
 	winsize := 2*radius + 1
 	scaleFlag := w.scaleFlag
-	if !isSecondary(record.Flags) && !isSupplementary(record.Flags) && int(record.MapQ) > w.mappingQ && matchingRatio(record) >= 0.85 {
-		recordTag, err := extractRecordTag(record)
+	if !record_flag.IsSecondary(record.Flags) && !record_flag.IsSupplementary(record.Flags) && int(record.MapQ) > w.mappingQ && record_flag.MatchingRatio(record) >= 0.85 {
+		recordTag, err := record_tag.ExtractRecordTag(record)
 		if err != nil {
 			log.Printf("extractRecordTag err:%v", err)
 			w.err = err
@@ -55,7 +58,7 @@ func (w *LocateWorker) Task(num int) {
 			alnRefEnd := record.End()
 			log.Printf("alnRefStart:%d, alnRefEnd:%d", alnRefStart, alnRefEnd)
 			cgList := w.cgListMap[alnRefChr]
-			overlappingCpg := findOverlappingCpg(cgList, alnRefStart, alnRefEnd)
+			overlappingCpg := cpgpos.FindOverlappingCpg(cgList, alnRefStart, alnRefEnd)
 			log.Printf("overlappingCpg:%+v", overlappingCpg)
 			if len(overlappingCpg) >= 1 {
 				readFiList := recordTag.Fi
@@ -63,7 +66,7 @@ func (w *LocateWorker) Task(num int) {
 				readRiList := recordTag.Ri
 				readRpList := recordTag.Rp
 				readSeqList := record.Seq.Expand()
-				readIsReverse := isReverse(record.Flags)
+				readIsReverse := record_flag.IsReverse(record.Flags)
 				readQueryLength := len(readSeqList)
 				readCigar := record.Cigar
 				readName := record.Name
@@ -72,7 +75,7 @@ func (w *LocateWorker) Task(num int) {
 				haplotype := recordTag.HP
 				haploTypeBlock := recordTag.PS
 
-				locatedCpgs, cpgPosOnRead := locateCpgPosOnSeq(alnRefStart, readCigar, overlappingCpg)
+				locatedCpgs, cpgPosOnRead := cpgpos.LocateCpgPosOnSeq(alnRefStart, readCigar, overlappingCpg)
 				log.Printf("readName:%s, len(overlappingCpg):%d, len(locatedCpgs):%d", readName, len(overlappingCpg), len(locatedCpgs))
 				log.Printf("locatedCpgs:%+v", locatedCpgs)
 				if len(locatedCpgs) >= 1 {
@@ -189,138 +192,49 @@ func (w *LocateWorker) Task(num int) {
 	}
 }
 
-func findOverlappingCpg(chrcglist []int, refStart, refEnd int) []int {
-	var overlappingCpg []int
-	//查找比refStart大的第一个元素
-	_, leftIndex := util.FindUpBoundIndex(chrcglist, refStart)
-	if leftIndex > len(chrcglist) {
-		return nil
-	}
-	//查找比refEnd小的第一个元素
-	_, rightIndex := util.FindLowBoundIndex(chrcglist, refEnd)
-	if rightIndex < 0 {
-		return nil
-	}
-	if leftIndex <= rightIndex {
-		for i := leftIndex; i <= rightIndex; i++ {
-			overlappingCpg = append(overlappingCpg, chrcglist[i])
+func getkineticswin(nums []uint8, scaleFlag bool) ([]float32, error) {
+
+	if scaleFlag == false {
+		var fnums []float32
+		for _, num := range nums {
+			fnums = append(fnums, float32(num))
 		}
+		return fnums, nil
 	}
-	return overlappingCpg
+	//计算平均值和标准差
+	if len(nums) == 0 {
+		return nil, fmt.Errorf("empty input")
+	}
+	data := stats.LoadRawData(nums)
+	mean, _ := stats.Mean(data)
+	std, _ := stats.StandardDeviation(data)
+	//fmt.Println("std:", std)
+	//计算(x-mean)/std
+	var kwin []float32
+	for _, num := range nums {
+		temp, err := stats.Round((float64(num)-mean)/std, 2)
+		if err != nil {
+			return nil, err
+		}
+		kwin = append(kwin, float32(temp))
+	}
+	return kwin, nil
 }
 
-func locateCpgPosOnSeq(alnRefStart int, readCigar sam.Cigar, overlappingCpg []int) ([]int, map[int]int) {
-	var locatedCpgs []int
-	cpgPosOnSeq := make(map[int]int)
-	cpgBeginIdx := 0
-	seqLeadingFlag := 1
-	seqPosBlkStart := 0
-	seqPosBlkEnd := 0
-	refWalkingPosStart := 0
-	refWalkingPosEnd := 0
-	for _, cigar := range readCigar {
-		op := cigar.Type()
-		count := cigar.Len()
-		if (op == sam.CigarInsertion || op == sam.CigarSoftClipped || op == sam.CigarHardClipped ||
-			op == sam.CigarPadded) && seqLeadingFlag == 1 {
-			//1,4 consume reads, 5_hard_clip should also be counted on reads, since the aligner doesn't change ipd/pw signal vector as the SEQ
-			if op != sam.CigarPadded {
-				seqPosBlkStart = seqPosBlkEnd
-				seqPosBlkEnd = seqPosBlkStart + count
-			}
-		} else {
-			//注意：下面这段逻辑有点奇怪，可以简化
-			if seqLeadingFlag == 1 {
-				seqLeadingFlag = 2
-				if (op == sam.CigarMatch || op == sam.CigarDeletion || op == sam.CigarSkipped ||
-					op == sam.CigarEqual || op == sam.CigarMismatch) && seqLeadingFlag == 2 {
-					refWalkingPosStart = alnRefStart
-					refWalkingPosEnd = refWalkingPosStart + count
-				}
-				if (op == sam.CigarMatch || op == sam.CigarInsertion || op == sam.CigarSoftClipped ||
-					op == sam.CigarEqual || op == sam.CigarMismatch) && seqLeadingFlag == 2 {
-					seqPosBlkStart = seqPosBlkEnd
-					seqPosBlkEnd = seqPosBlkStart + count
-				}
-			} else {
-				if op == sam.CigarMatch || op == sam.CigarDeletion || op == sam.CigarSkipped ||
-					op == sam.CigarEqual || op == sam.CigarMismatch {
-					refWalkingPosStart = refWalkingPosEnd
-					refWalkingPosEnd = refWalkingPosStart + count
-				}
-				if op == sam.CigarMatch || op == sam.CigarInsertion || op == sam.CigarSoftClipped ||
-					op == sam.CigarEqual || op == sam.CigarMismatch {
-					seqPosBlkStart = seqPosBlkEnd
-					seqPosBlkEnd = seqPosBlkStart + count
-				}
-			}
-			if op != sam.CigarDeletion && op != sam.CigarSkipped {
-				//检查当前refStart和refEnd是否包含某个cpg
-				matchedCpgs, nextIdx := whichCpgMatched(overlappingCpg, cpgBeginIdx, refWalkingPosStart, refWalkingPosEnd)
-				if alnRefStart == 49196398 {
-					log.Printf("cpgBeginIdx:%d, refWalkingPosStart:%d, refWalkingPosEnd:%d", cpgBeginIdx, refWalkingPosStart, refWalkingPosEnd)
-					log.Printf("mathcedCpgs:%v, nextIdx:%d", matchedCpgs, nextIdx)
-				}
-				if nextIdx > len(overlappingCpg) {
-					//对比结束
-					return locatedCpgs, cpgPosOnSeq
-				} else {
-					cpgBeginIdx = nextIdx
-					for _, cpg := range matchedCpgs {
-						lastOpNeeded := cpg - refWalkingPosStart
-						if op == sam.CigarMatch || op == sam.CigarInsertion || op == sam.CigarSoftClipped ||
-							op == sam.CigarEqual || op == sam.CigarMismatch {
-							seqPos := seqPosBlkStart + lastOpNeeded
-							cpgPosOnSeq[cpg] = seqPos - 1
-							locatedCpgs = append(locatedCpgs, cpg)
-						}
-					}
-				}
-			}
-		}
+func reverseSlice(arr []float32) []float32 {
+
+	res := make([]float32, len(arr))
+	length := len(arr)
+	for i := length - 1; i >= 0; i-- {
+		res[length-i-1] = arr[i]
 	}
-	return locatedCpgs, cpgPosOnSeq
+	return res
 }
 
-// 判断哪些cpg在当前给定的范围内，返回这些cpg的值和在cpglist中的坐标
-// cpgBeginIdx表示从overlappingCpg的哪个位置开始比对（cpgBeginIdx之前的位置可以不用比对）
-func whichCpgMatched(overlappingCpg []int, cpgBeginIdx int, refStart, refEnd int) ([]int, int) {
-	var matchedCpgs []int
-	var cpgNextIndex int //下一次查找overlappingCpg数组的开始位置
-
-	for i := cpgBeginIdx; i < len(overlappingCpg); i++ {
-		if refStart <= overlappingCpg[i] && overlappingCpg[i] <= refEnd {
-			matchedCpgs = append(matchedCpgs, overlappingCpg[i])
-			cpgNextIndex = i + 1
-		}
-		if refStart > overlappingCpg[i] {
-			cpgNextIndex = i + 1
-		}
-		if refEnd < overlappingCpg[i] {
-			//不用再比对了，等到refstart和refend更新后再从i位置开始比对
-			cpgNextIndex = i
-			break
-		}
+func formatSlice[T any](arr []T) string {
+	strs := make([]string, len(arr))
+	for i, num := range arr {
+		strs[i] = fmt.Sprintf("%v", num)
 	}
-	return matchedCpgs, cpgNextIndex
-}
-
-func matchingRatio(record *sam.Record) float32 {
-	cigars := record.Cigar
-	totalLen := 0
-	matchingLen := 0
-	for _, cigar := range cigars {
-		op := cigar.Type()
-		count := cigar.Len()
-		// 0:M, 1:I, 4:S, 7:=, 8:X ||||||||||||| sum of "M/I/S/=/X" is the SEQ length
-		if op == sam.CigarMatch || op == sam.CigarInsertion || op == sam.CigarSoftClipped ||
-			op == sam.CigarEqual || op == sam.CigarMismatch {
-			totalLen += count
-		}
-		if op == sam.CigarMatch || op == sam.CigarEqual || op == sam.CigarMismatch {
-			matchingLen += count
-		}
-	}
-	ratio := float32(matchingLen) / float32(totalLen)
-	return ratio
+	return strings.Join(strs, ",")
 }
