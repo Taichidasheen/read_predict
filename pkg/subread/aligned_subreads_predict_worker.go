@@ -21,7 +21,8 @@ type AlignedSubreadsPredictWorker struct {
 	err              error
 }
 
-func NewAlignedSubreadsPredictWorker(closedModel, openModel *tf.SavedModel, locatedPositions []*LocatedPosition, cpgOutputChan chan *CpgOutput, opts opt.Options) AlignedSubreadsPredictWorker {
+func NewAlignedSubreadsPredictWorker(closedModel, openModel *tf.SavedModel,
+	locatedPositions []*LocatedPosition, cpgOutputChan chan *CpgOutput, opts opt.Options) AlignedSubreadsPredictWorker {
 	return AlignedSubreadsPredictWorker{
 		closedModel:      closedModel,
 		openModel:        openModel,

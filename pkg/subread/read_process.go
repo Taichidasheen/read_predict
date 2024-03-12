@@ -3,9 +3,11 @@ package subread
 import (
 	"fmt"
 	"github.com/Taichidasheen/read_predict/pkg/opt"
+	"github.com/Taichidasheen/read_predict/pkg/pool"
 	"github.com/biogo/hts/bam"
 	"github.com/biogo/hts/bgzf"
 	"github.com/biogo/hts/sam"
+	tf "github.com/wamuir/graft/tensorflow"
 	"io"
 	"log"
 	"os"
@@ -39,7 +41,7 @@ func ReadSubreadsBam(wg *sync.WaitGroup, recordChan chan *sam.Record, bamReader 
 	}
 }
 
-func ProcessRecordChan(wg *sync.WaitGroup, resultChan chan string, recordChan chan *sam.Record,
+func ProcessFeatureRecordChan(wg *sync.WaitGroup, resultChan chan string, recordChan chan *sam.Record,
 	opts opt.Options, refOrderMap map[string]int, cgListMap map[string][]int) {
 	defer wg.Done()
 	defer close(resultChan)
@@ -152,6 +154,126 @@ func ProcessRecordChan(wg *sync.WaitGroup, resultChan chan string, recordChan ch
 		cpgOutputChan := make(chan *CpgOutput, 2000)
 		//生成zmwLine
 		go processAlignedSubreadsFeature(&wg4Fin, topDict, cpgOutputChan, opts)
+		//sort并写到resultChan
+		go sortCpgOutput2Chan(&wg4Fin, cpgOutputChan, resultChan, refOrderMap)
+		wg4Fin.Wait()
+	}
+
+}
+
+func ProcessPredictRecordChan(wg *sync.WaitGroup, resultChan chan string, recordChan chan *sam.Record,
+	opts opt.Options, refOrderMap map[string]int, cgListMap map[string][]int, closedModel, openModel *tf.SavedModel) {
+	defer wg.Done()
+	defer close(resultChan)
+
+	concurrency := opts.Processor
+
+	var processedCnt int
+
+	bufferSize := 4000
+	var bufferCnt int
+
+	bufferedRecords := make(chan *sam.Record, bufferSize)
+	recordPositions := make(chan *RecordPosition, bufferSize)
+	recordPositionDict := &RecordPositionDict{
+		ChrMap:               make(map[string]interface{}),
+		CpgLocationPositions: make(map[string][]*LocatedPosition),
+	}
+
+	for record := range recordChan {
+		bufferedRecords <- record
+		bufferCnt++
+		processedCnt++
+
+		if bufferCnt == bufferSize {
+			var wg4Cpg sync.WaitGroup
+			wg4Cpg.Add(concurrency)
+			for i := 0; i < concurrency; i++ {
+				go func() {
+					defer wg4Cpg.Done()
+					for re := range bufferedRecords {
+						recordPos := FindLocatedCpgs(re, opts, cgListMap)
+						if recordPos != nil {
+							recordPositions <- recordPos
+						}
+					}
+				}()
+			}
+			close(bufferedRecords)
+			wg4Cpg.Wait()
+			close(recordPositions)
+
+			log.Printf("processRecordPositions start, processed count:%d, len(recordPositions):%d", processedCnt, len(recordPositions))
+			//看看是否有需要写出的部分
+			topDict, err := processRecordPositions(recordPositionDict, recordPositions, refOrderMap)
+			if err != nil {
+				log.Printf("processRecordPositions err:%v", err)
+				return
+			}
+
+			//重新初始化bufferedRecords和recordPositions
+			bufferedRecords = make(chan *sam.Record, bufferSize)
+			recordPositions = make(chan *RecordPosition, bufferSize)
+			//重置bufferCnt
+			bufferCnt = 0
+
+			if topDict == nil {
+				log.Printf("no data can output now")
+				continue
+			}
+			var wg4Out sync.WaitGroup
+			wg4Out.Add(2)
+			cpgOutputChan := make(chan *CpgOutput, 2000)
+			//生成zmwLine
+			go processAlignedSubreadsPredict(&wg4Out, topDict, cpgOutputChan, opts, closedModel, openModel)
+			//sort并写到cpgOutputChan
+			go sortCpgOutput2Chan(&wg4Out, cpgOutputChan, resultChan, refOrderMap)
+
+			wg4Out.Wait()
+			log.Printf("processRecordPositions end, processed count:%d", processedCnt)
+
+		}
+
+	}
+
+	//已经读到文件末尾或处理到topN
+	if len(bufferedRecords) > 0 {
+
+		var wg4Cpg sync.WaitGroup
+		wg4Cpg.Add(concurrency)
+		for i := 0; i < concurrency; i++ {
+			go func() {
+				defer wg4Cpg.Done()
+				for re := range bufferedRecords {
+					recordPos := FindLocatedCpgs(re, opts, cgListMap)
+					if recordPos != nil {
+						recordPositions <- recordPos
+					}
+				}
+			}()
+		}
+		close(bufferedRecords)
+		wg4Cpg.Wait()
+		close(recordPositions)
+
+		//最后一次output不用重新初始化bufferedRecords和recordPositions
+
+		log.Println("final output...")
+
+		topDict, err := processFinalRecordPositions(recordPositionDict, recordPositions, refOrderMap)
+		if err != nil {
+			log.Printf("processRecordPositions err:%v", err)
+			return
+		}
+		if topDict == nil {
+			log.Printf("no data can output now")
+			return
+		}
+		var wg4Fin sync.WaitGroup
+		wg4Fin.Add(2)
+		cpgOutputChan := make(chan *CpgOutput, 2000)
+		//生成zmwLine
+		go processAlignedSubreadsPredict(&wg4Fin, topDict, cpgOutputChan, opts, closedModel, openModel)
 		//sort并写到resultChan
 		go sortCpgOutput2Chan(&wg4Fin, cpgOutputChan, resultChan, refOrderMap)
 		wg4Fin.Wait()
@@ -322,5 +444,43 @@ func ReadSubreadsBamAndProcess(wg *sync.WaitGroup, resultChan chan string,
 		go sortCpgOutput2Chan(&wg4Fin, cpgOutputChan, resultChan, refOrderMap)
 		wg4Fin.Wait()
 	}
+
+}
+
+func processAlignedSubreadsFeature(wg *sync.WaitGroup, topDict *TopRecordPositionDict,
+	cpgOutputChan chan *CpgOutput, opts opt.Options) {
+	defer wg.Done()
+	//记得close resultChan, 否则会deadlock
+	defer close(cpgOutputChan)
+
+	concurrency := opts.Processor
+
+	pool := pool.New(concurrency)
+
+	for _, chrCpg := range topDict.ChrCpgs {
+		locatedPositions := topDict.CpgLocationPositions[chrCpg]
+		w := NewAlignedSubreadsFeatureWorker(locatedPositions, cpgOutputChan, opts)
+		pool.Run(&w)
+	}
+	pool.Shutdown()
+
+}
+
+func processAlignedSubreadsPredict(wg *sync.WaitGroup, topDict *TopRecordPositionDict,
+	cpgOutputChan chan *CpgOutput, opts opt.Options, closedModel, openModel *tf.SavedModel) {
+	defer wg.Done()
+	//记得close resultChan, 否则会deadlock
+	defer close(cpgOutputChan)
+
+	concurrency := opts.Processor
+
+	pool := pool.New(concurrency)
+
+	for _, chrCpg := range topDict.ChrCpgs {
+		locatedPositions := topDict.CpgLocationPositions[chrCpg]
+		w := NewAlignedSubreadsPredictWorker(closedModel, openModel, locatedPositions, cpgOutputChan, opts)
+		pool.Run(&w)
+	}
+	pool.Shutdown()
 
 }

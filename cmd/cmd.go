@@ -43,6 +43,8 @@ func main() {
 	var modelJson string
 	var modelWeights string
 	var modelDir string
+	var closedModelDir string
+	var openModelDir string
 
 	var outputType string
 	var keepK string
@@ -65,6 +67,8 @@ func main() {
 	flag.StringVar(&modelJson, "j", "", "json file of the model, json file")
 	flag.StringVar(&modelWeights, "w", "", "weights of the model, h5 file")
 	flag.StringVar(&modelDir, "model", "", "model dir")
+	flag.StringVar(&closedModelDir, "cmodel", "", "closed model dir")
+	flag.StringVar(&openModelDir, "omodel", "", "open model dir")
 
 	// processing parameters
 	flag.IntVar(&processor, "p", 0, "Parallelism processors")
@@ -94,6 +98,8 @@ func main() {
 	fmt.Println("processor:", processor)
 	fmt.Println("datatype:", datatype)
 	fmt.Println("modelDir:", modelDir)
+	fmt.Println("closedModelDir:", closedModelDir)
+	fmt.Println("openModelDir:", openModelDir)
 
 	fmt.Println("outPrefix:", outPrefix)
 	fmt.Println("scale:", scale)
@@ -131,7 +137,8 @@ func main() {
 	if datatype == "HIFI" {
 		if inType == "unaligned" {
 			if outputType == "Feature" {
-				taskName = inType + "_" + outputType
+				taskName = datatype + "_" + inType + "_" + outputType
+
 				wg.Add(3)
 				recordChan := make(chan *sam.Record, 1000)
 				resultChan := make(chan string, 3000)
@@ -149,11 +156,62 @@ func main() {
 				//bamHeader := bamReader.Header()
 				//go writeBamRecord(&wg, bamHeader, outPrefix, predictResultChan)
 			}
+			if outputType == "MoleculeLevel" {
+				taskName = datatype + "_" + inType + "_" + outputType
+
+				model, err := loadModel(modelDir, []string{"serve"})
+				if err != nil {
+					log.Printf("loadModel err:%v, modelDir:%s", err, modelDir)
+				}
+				log.Printf("loaded model:%v", model)
+
+				bamFile, err := os.Open(bamFilePath)
+				if err != nil {
+					log.Fatalf("could not open file %q:", err)
+					return
+				}
+				defer bamFile.Close()
+				ok, err := bgzf.HasEOF(bamFile)
+				if err != nil {
+					log.Fatalf("could not open file %q:", err)
+					return
+				}
+				if !ok {
+					log.Printf("file has no bgzf magic block: may be truncated")
+					return
+				}
+				//读写并发度
+				concurrency := 5
+				//bam reader
+				bamReader, err := bam.NewReader(bamFile, concurrency)
+				if err != nil {
+					log.Fatalf("could not read bam:%v", err)
+					return
+				}
+				defer bamReader.Close()
+
+				wg.Add(3)
+				recordChan := make(chan *sam.Record, 1000)
+				//resultChan := make(chan string, 3000)
+				predictResultChan := make(chan *sam.Record, 1000)
+
+				//读取bam文件
+				//go readBam(&wg, recordChan, bamFilePath, topN)
+				go readHiFiBam(&wg, recordChan, bamReader, topN)
+				//异步处理record
+				go processTopHiFiPredict(&wg, model, recordChan, predictResultChan, opts)
+
+				//resultPath := "/storage/yangjianLab/westlakechat/subreads_locate/result.txt"
+				//异步写入result
+				//go writeTextResult(&wg, outPrefix, resultChan)
+				bamHeader := bamReader.Header()
+				go writeBamRecord(&wg, bamHeader, outPrefix, predictResultChan)
+			}
 		}
 
 		if inType == "aligned" {
 			if outputType == "Feature" {
-				taskName = inType + "_" + outputType
+				taskName = datatype + "_" + inType + "_" + outputType
 				//load cgList
 				cgListMap, err := buildCgListMap(cpgBed, chromosome)
 				if err != nil {
@@ -236,7 +294,7 @@ func main() {
 			go subread.ReadSubreadsBam(&wg, recordChan, bamReader, topN)
 			//go subread.ReadSubreadsBamAndProcess(&wg, resultChan, opts, bamFilePath, topN, cgListMap)
 			//处理record
-			go subread.ProcessRecordChan(&wg, resultChan, recordChan, opts, refOrderMap, cgListMap)
+			go subread.ProcessFeatureRecordChan(&wg, resultChan, recordChan, opts, refOrderMap, cgListMap)
 
 			//异步写入result
 			go writeTextResult(&wg, outPrefix, resultChan)
@@ -245,6 +303,75 @@ func main() {
 
 		//predict
 		if outputType == "MoleculeLevel" {
+			taskName = datatype + "_" + inType + "_" + outputType
+			//load cgList
+			cgListMap, err := buildCgListMap(cpgBed, chromosome)
+			if err != nil {
+				log.Fatalf("buildCgListMap err:%v", err)
+				return
+			}
+			log.Println("len(cgListMap):", len(cgListMap))
+
+			//load model
+			closedModel, err := loadModel(closedModelDir, []string{"serve"})
+			if err != nil {
+				log.Printf("loadModel err:%v, closedModelDir:%s", err, closedModelDir)
+			}
+			log.Printf("loaded closed model:%v", closedModel)
+
+			openModel, err := loadModel(openModelDir, []string{"serve"})
+			if err != nil {
+				log.Printf("loadModel err:%v, openModelDir:%s", err, openModelDir)
+			}
+			log.Printf("loaded open model:%v", openModel)
+
+			bamFile, err := os.Open(bamFilePath)
+			if err != nil {
+				log.Fatalf("could not open file %q:", err)
+				return
+			}
+			defer bamFile.Close()
+			ok, err := bgzf.HasEOF(bamFile)
+			if err != nil {
+				log.Fatalf("could not open file %q:", err)
+				return
+			}
+			if !ok {
+				log.Printf("file has no bgzf magic block: may be truncated")
+				return
+			}
+			//读写并发度
+			concurrency := 5
+			//bam reader
+			bamReader, err := bam.NewReader(bamFile, concurrency)
+			if err != nil {
+				log.Fatalf("could not read bam:%v", err)
+				return
+			}
+			defer bamReader.Close()
+
+			//获取ref
+			bamHeader := bamReader.Header()
+			refs := bamHeader.Refs()
+			refOrderMap := make(map[string]int)
+			for i := 0; i < len(refs); i++ {
+				refChr := refs[i].Name()
+				refOrderMap[refChr] = i
+			}
+			//log.Println("refOrderMap:", refOrderMap)
+
+			wg.Add(3)
+			recordChan := make(chan *sam.Record, 1000)
+			resultChan := make(chan string, 3000)
+
+			//读取bam文件
+			go subread.ReadSubreadsBam(&wg, recordChan, bamReader, topN)
+			//go subread.ReadSubreadsBamAndProcess(&wg, resultChan, opts, bamFilePath, topN, cgListMap)
+			//处理record
+			go subread.ProcessPredictRecordChan(&wg, resultChan, recordChan, opts, refOrderMap, cgListMap, closedModel, openModel)
+
+			//异步写入result
+			go writeTextResult(&wg, outPrefix, resultChan)
 
 		}
 	}
@@ -372,6 +499,33 @@ func readBam(wg *sync.WaitGroup, recordChan chan *sam.Record, bamFilePath string
 		}
 		if err != nil {
 			log.Fatalf("error reading bam: %v", err)
+			return
+		}
+		count++
+		if count%10000 == 0 {
+			log.Printf("count:%d", count)
+		}
+		if topN != 0 && count == topN+1 {
+			log.Printf("has processed topN:%d rows, break...", topN)
+			break
+		}
+		recordChan <- record
+	}
+}
+
+func readHiFiBam(wg *sync.WaitGroup, recordChan chan *sam.Record, bamReader *bam.Reader, topN int) {
+	defer wg.Done()
+	defer close(recordChan)
+
+	var count int
+	fmt.Printf("begin count...")
+	for {
+		record, err := bamReader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Printf("error reading bam: %v", err)
 			return
 		}
 		count++

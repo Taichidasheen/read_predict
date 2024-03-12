@@ -2,8 +2,6 @@ package subread
 
 import (
 	"fmt"
-	"github.com/Taichidasheen/read_predict/pkg/opt"
-	"github.com/Taichidasheen/read_predict/pkg/pool"
 	"log"
 	"strconv"
 	"strings"
@@ -213,23 +211,4 @@ func sortCpgOutput2Chan(wg *sync.WaitGroup, cpgOutputChan chan *CpgOutput, resul
 			resultChan <- zmwLine
 		}
 	}
-}
-
-func processAlignedSubreadsFeature(wg *sync.WaitGroup, topDict *TopRecordPositionDict,
-	cpgOutputChan chan *CpgOutput, opts opt.Options) {
-	defer wg.Done()
-	//记得close resultChan, 否则会deadlock
-	defer close(cpgOutputChan)
-
-	concurrency := opts.Processor
-
-	pool := pool.New(concurrency)
-
-	for _, chrCpg := range topDict.ChrCpgs {
-		locatedPositions := topDict.CpgLocationPositions[chrCpg]
-		w := NewAlignedSubreadsFeatureWorker(locatedPositions, cpgOutputChan, opts)
-		pool.Run(&w)
-	}
-	pool.Shutdown()
-
 }
