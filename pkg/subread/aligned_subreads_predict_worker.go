@@ -138,7 +138,7 @@ func (w *AlignedSubreadsPredictWorker) Task(num int) {
 			return
 		}
 		//构造输出
-		predictLine, err := formatZMWPredictLine(refChr, locatedCpg, cpgPredictFeature.OpenNames, cpgPredictFeature.OpenNpassesList, openProbes, "0")
+		predictLine, err := formatZMWPredictLine(refChr, locatedCpg, cpgPredictFeature.OpenNames, cpgPredictFeature.OpenNpassesList, openProbes, "O")
 		if err != nil {
 			log.Printf("formatZMWPredictLine err:%+v", err)
 			w.err = err

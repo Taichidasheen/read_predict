@@ -203,7 +203,8 @@ func main() {
 
 				//resultPath := "/storage/yangjianLab/westlakechat/subreads_locate/result.txt"
 				//异步写入result
-				go writeTextResult(&wg, outPrefix, resultChan)
+				outfile := outPrefix + ".Kmat.txt"
+				go writeTextResult(&wg, outfile, resultChan)
 				//bamHeader := bamReader.Header()
 				//go writeBamRecord(&wg, bamHeader, outPrefix, predictResultChan)
 			}
@@ -255,8 +256,9 @@ func main() {
 				//resultPath := "/storage/yangjianLab/westlakechat/subreads_locate/result.txt"
 				//异步写入result
 				//go writeTextResult(&wg, outPrefix, resultChan)
+				outFile := outPrefix + ".5mc.mod.unaligned.bam"
 				bamHeader := bamReader.Header()
-				go writeBamRecord(&wg, bamHeader, outPrefix, predictResultChan)
+				go writeBamRecord(&wg, bamHeader, outFile, predictResultChan)
 			}
 		}
 
@@ -285,7 +287,8 @@ func main() {
 
 				//resultPath := "/storage/yangjianLab/westlakechat/subreads_locate/result.txt"
 				//异步写入result
-				go writeTextResult(&wg, outPrefix, resultChan)
+				outFile := outPrefix + ".Kmat.txt"
+				go writeTextResult(&wg, outFile, resultChan)
 				//bamHeader := bamReader.Header()
 				//go writeBamRecord(&wg, bamHeader, outPrefix, predictResultChan)
 			}
@@ -347,11 +350,13 @@ func main() {
 				//resultPath := "/storage/yangjianLab/westlakechat/subreads_locate/result.txt"
 				//异步写入result
 				if outputType == "MoleculeLevel" {
-					go writeTextResult(&wg, outPrefix, predictTextResultChan)
+					outFile := outPrefix + ".SingleMol.pre.txt"
+					go writeTextResult(&wg, outFile, predictTextResultChan)
 				}
 				if outputType == "ModBam" {
+					outFile := outPrefix + ".modification.bam"
 					bamHeader := bamReader.Header()
-					go writeBamRecord(&wg, bamHeader, outPrefix, predictBamResultChan)
+					go writeBamRecord(&wg, bamHeader, outFile, predictBamResultChan)
 				}
 			}
 		}
@@ -415,7 +420,8 @@ func main() {
 			go subread.ProcessFeatureRecordChan(&wg, resultChan, recordChan, opts, refOrderMap, cgListMap)
 
 			//异步写入result
-			go writeTextResult(&wg, outPrefix, resultChan)
+			outFile := outPrefix + ".Kmat.txt"
+			go writeTextResult(&wg, outFile, resultChan)
 
 		}
 
@@ -490,7 +496,8 @@ func main() {
 			go subread.ProcessPredictRecordChan(&wg, resultChan, recordChan, opts, refOrderMap, cgListMap, closedModel, openModel)
 
 			//异步写入result
-			go writeTextResult(&wg, outPrefix, resultChan)
+			outFile := outPrefix + ".SingleMol.pre.txt"
+			go writeTextResult(&wg, outFile, resultChan)
 
 		}
 	}
@@ -685,10 +692,10 @@ func readHiFiBam(wg *sync.WaitGroup, recordChan chan *sam.Record, bamReader *bam
 	}
 }
 
-func writeTextResult(wg *sync.WaitGroup, outPrefix string, resultChan chan string) {
+func writeTextResult(wg *sync.WaitGroup, outFile string, resultChan chan string) {
 	defer wg.Done()
 
-	file, err := os.Create(outPrefix)
+	file, err := os.Create(outFile)
 	if err != nil {
 		log.Fatalf("could not open file %q:", err)
 		return
