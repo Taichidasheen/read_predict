@@ -78,7 +78,8 @@ func (w *AlignedHiFiPredictWorker) Task(num int) {
 
 				if len(locatedCpgs) >= 1 {
 					var xReads [][][]float32
-					var featurePosOnSeq []int
+					var featurePosOnSeq []int //pos on the seq
+					var featurePosOnRef []int //pos on the reference
 					for _, cpg := range locatedCpgs {
 						//heading or tailing removing
 						posOnSeq := cpgPosOnSeq[cpg]
@@ -101,6 +102,7 @@ func (w *AlignedHiFiPredictWorker) Task(num int) {
 						mat := feature.FormatTransposedClosedZMW(feat, float32(totalSubreadsDep))
 						xReads = append(xReads, mat)
 						featurePosOnSeq = append(featurePosOnSeq, posOnSeq)
+						featurePosOnRef = append(featurePosOnRef, cpg)
 					}
 
 					log.Printf("readName:%s,  len(cpgPosOnSeq):%d, len(xReads):%d", record.Name, len(cpgPosOnSeq), len(xReads))
@@ -115,7 +117,7 @@ func (w *AlignedHiFiPredictWorker) Task(num int) {
 
 					//output
 					if w.opts.OutputType == "MoleculeLevel" {
-						moleculeLevelOut(record, recordTag, featurePosOnSeq, probes, w.textResultChan)
+						moleculeLevelOut(record, recordTag, featurePosOnRef, probes, w.textResultChan)
 					}
 					if w.opts.OutputType == "ModBam" {
 						err = modBamOut(record, keepK, featurePosOnSeq, probes, w.bamResultChan)
@@ -131,7 +133,7 @@ func (w *AlignedHiFiPredictWorker) Task(num int) {
 	}
 }
 
-func moleculeLevelOut(record *sam.Record, recordTag *record_tag.RecordTag, featurePosOnSeq []int, probes []float32, textResultChan chan string) {
+func moleculeLevelOut(record *sam.Record, recordTag *record_tag.RecordTag, featurePosOnRef []int, probes []float32, textResultChan chan string) {
 	alnRefChr := record.Ref.Name()
 	readName := record.Name
 	parts := strings.Split(readName, "/")
@@ -146,9 +148,9 @@ func moleculeLevelOut(record *sam.Record, recordTag *record_tag.RecordTag, featu
 	zmwType := "H"
 	strandSign := "+"
 
-	allLines := make([]string, len(featurePosOnSeq))
+	allLines := make([]string, len(featurePosOnRef))
 
-	for i, pos := range featurePosOnSeq {
+	for i, pos := range featurePosOnRef {
 		var bi int
 		if probes[i] >= 0.5 {
 			bi = 1
