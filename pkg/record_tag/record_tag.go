@@ -238,3 +238,19 @@ func RemoveRecordTag(record *sam.Record) {
 	}
 	record.AuxFields = newAuxes
 }
+
+func RemoveMMMLTag(record *sam.Record) {
+	auxes := record.AuxFields
+	var newAuxes sam.AuxFields
+	for _, aux := range auxes {
+		tag := aux.Tag()
+		if tag[0] == 'M' && tag[1] == 'M' {
+			continue
+		}
+		if tag[0] == 'M' && tag[1] == 'L' {
+			continue
+		}
+		newAuxes = append(newAuxes, aux)
+	}
+	record.AuxFields = newAuxes
+}

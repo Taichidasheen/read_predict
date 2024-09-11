@@ -194,6 +194,9 @@ func modBamOut(record *sam.Record, keepK string, featurePosOnSeq []int, probes [
 		log.Printf("genMMTag err:%+v, read name:%s", err, record.Name)
 		return err
 	}
+	//如果原来的文件里有MM和ML，先去掉
+	record_tag.RemoveMMMLTag(record)
+
 	record.AuxFields = append(record.AuxFields, mlTag)
 	record.AuxFields = append(record.AuxFields, mmTag)
 	if keepK == "remove" {
