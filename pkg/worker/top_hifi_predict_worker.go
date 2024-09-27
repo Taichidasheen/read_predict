@@ -6,8 +6,9 @@ import (
 	"github.com/Taichidasheen/read_predict/pkg/predict"
 	"github.com/Taichidasheen/read_predict/pkg/record_tag"
 	"github.com/biogo/hts/sam"
+	"github.com/rs/zerolog/log"
 	tf "github.com/wamuir/graft/tensorflow"
-	"log"
+
 	"regexp"
 	"time"
 )
@@ -44,13 +45,16 @@ func (w *TopHiFiPredictWorker) Task(num int) {
 	scaleFlag := w.opts.ScaleFlag
 	recordTag, err := record_tag.ExtractRecordTag(record)
 	if err != nil {
-		log.Printf("extractRecordTag err:%v", err)
+		log.Error().Msgf("extractRecordTag err:%v", err)
 		w.err = err
 		return
 	}
 	fn := recordTag.Fn
 	rn := recordTag.Rn
 	totalSubreadsDep := fn + rn
+
+	predictFlag := false //记录是否发生了predict动作
+
 	if totalSubreadsDep >= int32(w.opts.MinSubDep) && totalSubreadsDep <= int32(w.opts.MaxSubDep) && fn >= 1 && rn >= 1 {
 		readFiList := recordTag.Fi
 		readFpList := recordTag.Fp
@@ -61,7 +65,7 @@ func (w *TopHiFiPredictWorker) Task(num int) {
 		readQueryLength := len(readSeqList)
 
 		cpgPosOnRead := findCpGPos(string(readSeqList), radius)
-		//log.Printf("readName:%s, len(cpgPosOnRead):%d", record.Name, len(cpgPosOnRead))
+		//log.Debug().Msgf("readName:%s, len(cpgPosOnRead):%d", record.Name, len(cpgPosOnRead))
 		if len(cpgPosOnRead) >= 1 {
 			var xReads [][][]float32
 			//start := time.Now()
@@ -69,21 +73,21 @@ func (w *TopHiFiPredictWorker) Task(num int) {
 
 				//remove cpg at the head or tail of a read, which causing out of range index
 				if posOnRead < radius+5 {
-					log.Printf("posOnRead head remove, readname:%s, posOnRead:%d", record.Name, posOnRead)
+					log.Warn().Msgf("posOnRead head remove, readname:%s, posOnRead:%d", record.Name, posOnRead)
 					continue
 				}
 				if posOnRead > readQueryLength-radius-5 {
-					log.Printf("posOnRead tail remove, readname:%s, posOnRead:%d", record.Name, posOnRead)
+					log.Warn().Msgf("posOnRead tail remove, readname:%s, posOnRead:%d", record.Name, posOnRead)
 					continue
 				}
-				//log.Printf("readName:%s, posOnRead:%d", readName, posOnRead)
+				//log.Debug().Msgf("readName:%s, posOnRead:%d", readName, posOnRead)
 
 				feat, err := feature.HiFiRead_cpg_K_Feature(posOnRead, readIsReverse, radius, readQueryLength, readSeqList, readFiList, readFpList, readRiList, readRpList, scaleFlag)
 				if err != nil {
-					log.Printf("HiFiRead_cpg_K_Feature err:%v, read name:%s", err, record.Name)
+					log.Error().Msgf("HiFiRead_cpg_K_Feature err:%v, read name:%s", err, record.Name)
 					continue
 				}
-				//log.Printf("record name:%s, xxxx feature:%+v", record.Name, feature)
+				//log.Debug().Msgf("record name:%s, xxxx feature:%+v", record.Name, feature)
 				//mat := formatClosedZMW(feature, float32(totalSubreadsDep))
 				//if len(mat) == 13 {
 				//	xReads = append(xReads, mat)
@@ -93,28 +97,32 @@ func (w *TopHiFiPredictWorker) Task(num int) {
 			}
 			//input := transpose3D(xReads)
 			//transpose3D(xReads)
-			//log.Printf("readName:%s, constructPredictInput cost:%v", record.Name, time.Since(start))
-			log.Printf("readName:%s,  len(cpgPosOnRead):%d, len(xReads):%d", record.Name, len(cpgPosOnRead), len(xReads))
+			//log.Debug().Msgf("readName:%s, constructPredictInput cost:%v", record.Name, time.Since(start))
+			log.Debug().Msgf("readName:%s,  len(cpgPosOnRead):%d, len(xReads):%d", record.Name, len(cpgPosOnRead), len(xReads))
+			predictFlag = true //修改标记为需要进行predict
 			//predict
 			probes, err := predict.Predict(model, xReads)
 			if err != nil {
-				log.Printf("predict err:%+v, read name:%s, input:%+v", err, record.Name, xReads)
+				log.Error().Msgf("predict err:%+v, read name:%s, input:%+v", err, record.Name, xReads)
 				w.err = err
 				return
 			}
 			//计算ML tag和MM tag
 			mlTag, err := record_tag.GenMLTag(probes)
 			if err != nil {
-				log.Printf("genMLTag err:%+v, read name:%s", err, record.Name)
+				log.Error().Msgf("genMLTag err:%+v, read name:%s", err, record.Name)
 				w.err = err
 				return
 			}
 			mmTag, err := record_tag.GenMMTag(string(readSeqList))
 			if err != nil {
-				log.Printf("genMMTag err:%+v, read name:%s", err, record.Name)
+				log.Error().Msgf("genMMTag err:%+v, read name:%s", err, record.Name)
 				w.err = err
 				return
 			}
+			//如果原来的文件里有MM和ML，先去掉
+			record_tag.RemoveMMMLTag(record)
+
 			record.AuxFields = append(record.AuxFields, mlTag)
 			record.AuxFields = append(record.AuxFields, mmTag)
 			if w.opts.KeepK == "remove" {
@@ -124,6 +132,17 @@ func (w *TopHiFiPredictWorker) Task(num int) {
 			w.resultChan <- record
 		}
 	}
+	//如果当前record没有进行predict，则去掉ML，MM tag后原样输出
+	if predictFlag == false {
+		log.Debug().Msgf("no predict process,direct output, record name:%s", record.Name)
+		//如果原来的文件里有MM和ML，先去掉
+		record_tag.RemoveMMMLTag(record)
+		if w.opts.KeepK == "remove" {
+			record_tag.RemoveRecordTag(record)
+		}
+		//写出到channel
+		w.resultChan <- record
+	}
 }
 
 // 速度比较慢，耗时差不多100～200微秒
@@ -131,7 +150,7 @@ func findCpGPosByRegexp(readSeqString string, radius int) []int {
 
 	start := time.Now()
 	defer func() {
-		log.Println("findCpGPosByRegexp cost:", time.Since(start))
+		log.Debug().Msgf("findCpGPosByRegexp cost:%v", time.Since(start))
 	}()
 
 	cpgString := "CG"
@@ -142,11 +161,11 @@ func findCpGPosByRegexp(readSeqString string, radius int) []int {
 	var cpgPosOnRead []int
 	for _, match := range matches {
 		if match[0] < radius {
-			log.Printf("fitlered match, index:%d, readSeqLen:%d", match[0], readSeqLen)
+			log.Warn().Msgf("fitlered match, index:%d, readSeqLen:%d", match[0], readSeqLen)
 			continue
 		}
 		if match[0] > (readSeqLen - radius) {
-			log.Printf("fitlered match, index:%d, readSeqLen:%d", match[0], readSeqLen)
+			log.Warn().Msgf("fitlered match, index:%d, readSeqLen:%d", match[0], readSeqLen)
 			continue
 		}
 

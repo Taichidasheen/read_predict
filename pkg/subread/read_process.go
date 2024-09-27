@@ -7,9 +7,9 @@ import (
 	"github.com/biogo/hts/bam"
 	"github.com/biogo/hts/bgzf"
 	"github.com/biogo/hts/sam"
+	"github.com/rs/zerolog/log"
 	tf "github.com/wamuir/graft/tensorflow"
 	"io"
-	"log"
 	"os"
 	"sync"
 )
@@ -26,15 +26,15 @@ func ReadSubreadsBam(wg *sync.WaitGroup, recordChan chan *sam.Record, bamReader 
 			break
 		}
 		if err != nil {
-			log.Printf("error reading bam: %v", err)
+			log.Error().Msgf("error reading bam: %v", err)
 			return
 		}
 		count++
 		if count%10000 == 0 {
-			log.Printf("count:%d", count)
+			log.Info().Msgf("count:%d", count)
 		}
 		if topN != 0 && count == topN+1 {
-			log.Printf("has processed topN:%d rows, break...", topN)
+			log.Info().Msgf("has processed topN:%d rows, break...", topN)
 			break
 		}
 		recordChan <- record
@@ -83,11 +83,11 @@ func ProcessFeatureRecordChan(wg *sync.WaitGroup, resultChan chan string, record
 			wg4Cpg.Wait()
 			close(recordPositions)
 
-			log.Printf("processRecordPositions start, processed count:%d, len(recordPositions):%d", processedCnt, len(recordPositions))
+			log.Debug().Msgf("processRecordPositions start, processed count:%d, len(recordPositions):%d", processedCnt, len(recordPositions))
 			//看看是否有需要写出的部分
 			topDict, err := processRecordPositions(recordPositionDict, recordPositions, refOrderMap)
 			if err != nil {
-				log.Printf("processRecordPositions err:%v", err)
+				log.Error().Msgf("processRecordPositions err:%v", err)
 				return
 			}
 
@@ -98,7 +98,7 @@ func ProcessFeatureRecordChan(wg *sync.WaitGroup, resultChan chan string, record
 			bufferCnt = 0
 
 			if topDict == nil {
-				log.Printf("no data can output now")
+				log.Warn().Msgf("no data can output now")
 				continue
 			}
 			var wg4Out sync.WaitGroup
@@ -110,7 +110,7 @@ func ProcessFeatureRecordChan(wg *sync.WaitGroup, resultChan chan string, record
 			go sortCpgOutput2Chan(&wg4Out, cpgOutputChan, resultChan, refOrderMap)
 
 			wg4Out.Wait()
-			log.Printf("processRecordPositions end, processed count:%d", processedCnt)
+			log.Debug().Msgf("processRecordPositions end, processed count:%d", processedCnt)
 
 		}
 
@@ -138,15 +138,15 @@ func ProcessFeatureRecordChan(wg *sync.WaitGroup, resultChan chan string, record
 
 		//最后一次output不用重新初始化bufferedRecords和recordPositions
 
-		log.Println("final output...")
+		log.Debug().Msgf("final output...")
 
 		topDict, err := processFinalRecordPositions(recordPositionDict, recordPositions, refOrderMap)
 		if err != nil {
-			log.Printf("processRecordPositions err:%v", err)
+			log.Error().Msgf("processRecordPositions err:%v", err)
 			return
 		}
 		if topDict == nil {
-			log.Printf("no data can output now")
+			log.Error().Msgf("no data can output now")
 			return
 		}
 		var wg4Fin sync.WaitGroup
@@ -203,11 +203,11 @@ func ProcessPredictRecordChan(wg *sync.WaitGroup, resultChan chan string, record
 			wg4Cpg.Wait()
 			close(recordPositions)
 
-			log.Printf("processRecordPositions start, processed count:%d, len(recordPositions):%d", processedCnt, len(recordPositions))
+			log.Debug().Msgf("processRecordPositions start, processed count:%d, len(recordPositions):%d", processedCnt, len(recordPositions))
 			//看看是否有需要写出的部分
 			topDict, err := processRecordPositions(recordPositionDict, recordPositions, refOrderMap)
 			if err != nil {
-				log.Printf("processRecordPositions err:%v", err)
+				log.Error().Msgf("processRecordPositions err:%v", err)
 				return
 			}
 
@@ -218,7 +218,7 @@ func ProcessPredictRecordChan(wg *sync.WaitGroup, resultChan chan string, record
 			bufferCnt = 0
 
 			if topDict == nil {
-				log.Printf("no data can output now")
+				log.Error().Msgf("no data can output now")
 				continue
 			}
 			var wg4Out sync.WaitGroup
@@ -230,7 +230,7 @@ func ProcessPredictRecordChan(wg *sync.WaitGroup, resultChan chan string, record
 			go sortCpgOutput2Chan(&wg4Out, cpgOutputChan, resultChan, refOrderMap)
 
 			wg4Out.Wait()
-			log.Printf("processRecordPositions end, processed count:%d", processedCnt)
+			log.Debug().Msgf("processRecordPositions end, processed count:%d", processedCnt)
 
 		}
 
@@ -258,15 +258,15 @@ func ProcessPredictRecordChan(wg *sync.WaitGroup, resultChan chan string, record
 
 		//最后一次output不用重新初始化bufferedRecords和recordPositions
 
-		log.Println("final output...")
+		log.Debug().Msgf("final output...")
 
 		topDict, err := processFinalRecordPositions(recordPositionDict, recordPositions, refOrderMap)
 		if err != nil {
-			log.Printf("processRecordPositions err:%v", err)
+			log.Error().Msgf("processRecordPositions err:%v", err)
 			return
 		}
 		if topDict == nil {
-			log.Printf("no data can output now")
+			log.Error().Msgf("no data can output now")
 			return
 		}
 		var wg4Fin sync.WaitGroup
@@ -289,17 +289,17 @@ func ReadSubreadsBamAndProcess(wg *sync.WaitGroup, resultChan chan string,
 	//bamFilePath := "/storage/yangjianLab/caoyujie/project/meth/Bam_file/4_hifi_subreads/HG01109_WT_hifi/5x.sort.HG01109_WT_hifi.aln.bam"
 	bamFile, err := os.Open(bamFilePath)
 	if err != nil {
-		log.Printf("could not open file %q:", err)
+		log.Error().Msgf("could not open file %q:", err)
 		return
 	}
 	defer bamFile.Close()
 	ok, err := bgzf.HasEOF(bamFile)
 	if err != nil {
-		log.Printf("could not open file %q:", err)
+		log.Error().Msgf("could not open file %q:", err)
 		return
 	}
 	if !ok {
-		log.Printf("file has no bgzf magic block: may be truncated")
+		log.Error().Msgf("file has no bgzf magic block: may be truncated")
 		return
 	}
 	//读写并发度
@@ -308,7 +308,7 @@ func ReadSubreadsBamAndProcess(wg *sync.WaitGroup, resultChan chan string,
 	//bam reader
 	bamReader, err := bam.NewReader(bamFile, concurrency)
 	if err != nil {
-		log.Printf("could not read bam:%v", err)
+		log.Error().Msgf("could not read bam:%v", err)
 		return
 	}
 	defer bamReader.Close()
@@ -341,15 +341,15 @@ func ReadSubreadsBamAndProcess(wg *sync.WaitGroup, resultChan chan string,
 			break
 		}
 		if err != nil {
-			log.Printf("error reading bam: %v", err)
+			log.Error().Msgf("error reading bam: %v", err)
 			return
 		}
 		count++
 		if count%1000 == 0 {
-			log.Printf("count:%d", count)
+			log.Debug().Msgf("count:%d", count)
 		}
 		if topN != 0 && count == topN+1 {
-			log.Printf("has processed topN:%d rows, break...", topN)
+			log.Debug().Msgf("has processed topN:%d rows, break...", topN)
 			break
 		}
 		bufferedRecords <- record
@@ -372,11 +372,11 @@ func ReadSubreadsBamAndProcess(wg *sync.WaitGroup, resultChan chan string,
 			wg4Cpg.Wait()
 			close(recordPositions)
 
-			log.Printf("processRecordPositions start, count:%d, len(recordPositions):%d", count, len(recordPositions))
+			log.Debug().Msgf("processRecordPositions start, count:%d, len(recordPositions):%d", count, len(recordPositions))
 			//看看是否有需要写出的部分
 			topDict, err := processRecordPositions(recordPositionDict, recordPositions, refOrderMap)
 			if err != nil {
-				log.Printf("processRecordPositions err:%v", err)
+				log.Error().Msgf("processRecordPositions err:%v", err)
 				return
 			}
 
@@ -385,7 +385,7 @@ func ReadSubreadsBamAndProcess(wg *sync.WaitGroup, resultChan chan string,
 			recordPositions = make(chan *RecordPosition, bufferSize)
 
 			if topDict == nil {
-				log.Printf("no data can output now")
+				log.Error().Msgf("no data can output now")
 				continue
 			}
 			var wg4Out sync.WaitGroup
@@ -397,7 +397,7 @@ func ReadSubreadsBamAndProcess(wg *sync.WaitGroup, resultChan chan string,
 			go sortCpgOutput2Chan(&wg4Out, cpgOutputChan, resultChan, refOrderMap)
 
 			wg4Out.Wait()
-			log.Printf("processRecordPositions end, count:%d", count)
+			log.Debug().Msgf("processRecordPositions end, count:%d", count)
 
 		}
 
@@ -424,15 +424,15 @@ func ReadSubreadsBamAndProcess(wg *sync.WaitGroup, resultChan chan string,
 
 		//最后一次output不用重新初始化bufferedRecords和recordPositions
 
-		log.Println("final output...")
+		log.Debug().Msgf("final output...")
 
 		topDict, err := processFinalRecordPositions(recordPositionDict, recordPositions, refOrderMap)
 		if err != nil {
-			log.Printf("processRecordPositions err:%v", err)
+			log.Error().Msgf("processRecordPositions err:%v", err)
 			return
 		}
 		if topDict == nil {
-			log.Printf("no data can output now")
+			log.Error().Msgf("no data can output now")
 			return
 		}
 		var wg4Fin sync.WaitGroup

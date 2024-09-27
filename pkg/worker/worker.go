@@ -7,7 +7,7 @@ import (
 	"github.com/Taichidasheen/read_predict/pkg/record_tag"
 	"github.com/biogo/hts/sam"
 	"github.com/montanaflynn/stats"
-	"log"
+	"github.com/rs/zerolog/log"
 	"strings"
 )
 
@@ -45,7 +45,7 @@ func (w *LocateWorker) Task(num int) {
 	if !record_flag.IsSecondary(record.Flags) && !record_flag.IsSupplementary(record.Flags) && int(record.MapQ) > w.mappingQ && record_flag.MatchingRatio(record) >= 0.85 {
 		recordTag, err := record_tag.ExtractRecordTag(record)
 		if err != nil {
-			log.Printf("extractRecordTag err:%v", err)
+			log.Error().Msgf("extractRecordTag err:%v", err)
 			w.err = err
 			return
 		}
@@ -56,10 +56,10 @@ func (w *LocateWorker) Task(num int) {
 			alnRefChr := record.Ref.Name()
 			alnRefStart := record.Pos
 			alnRefEnd := record.End()
-			log.Printf("alnRefStart:%d, alnRefEnd:%d", alnRefStart, alnRefEnd)
+			log.Debug().Msgf("alnRefStart:%d, alnRefEnd:%d", alnRefStart, alnRefEnd)
 			cgList := w.cgListMap[alnRefChr]
 			overlappingCpg := cpgpos.FindOverlappingCpg(cgList, alnRefStart, alnRefEnd)
-			log.Printf("overlappingCpg:%+v", overlappingCpg)
+			log.Debug().Msgf("overlappingCpg:%+v", overlappingCpg)
 			if len(overlappingCpg) >= 1 {
 				readFiList := recordTag.Fi
 				readFpList := recordTag.Fp
@@ -76,12 +76,12 @@ func (w *LocateWorker) Task(num int) {
 				haploTypeBlock := recordTag.PS
 
 				locatedCpgs, cpgPosOnRead := cpgpos.LocateCpgPosOnSeq(alnRefStart, readCigar, overlappingCpg)
-				log.Printf("readName:%s, len(overlappingCpg):%d, len(locatedCpgs):%d", readName, len(overlappingCpg), len(locatedCpgs))
-				log.Printf("locatedCpgs:%+v", locatedCpgs)
+				log.Debug().Msgf("readName:%s, len(overlappingCpg):%d, len(locatedCpgs):%d", readName, len(overlappingCpg), len(locatedCpgs))
+				log.Debug().Msgf("locatedCpgs:%+v", locatedCpgs)
 				if len(locatedCpgs) >= 1 {
 					for _, cpg := range locatedCpgs {
 						posOnRead := cpgPosOnRead[cpg]
-						//log.Printf("readName:%s, cpg:%d, posOnRead:%d", readName, cpg, posOnRead)
+						//log.Debug().Msgf("readName:%s, cpg:%d, posOnRead:%d", readName, cpg, posOnRead)
 						var fIPDList, fPWList, rIPDList, rPWList []float32
 						var seqList []byte
 
@@ -96,12 +96,12 @@ func (w *LocateWorker) Task(num int) {
 							if leftRefFCOnFList > 0 && rightRefFCOnFList < readQueryLength {
 								fIPDList, err = getkineticswin(readFiList[leftRefFCOnFList:rightRefFCOnFList], scaleFlag)
 								if err != nil {
-									log.Printf("getkineticswin err:%+v", err)
+									log.Debug().Msgf("getkineticswin err:%+v", err)
 									continue
 								}
 								fPWList, err = getkineticswin(readFpList[leftRefFCOnFList:rightRefFCOnFList], scaleFlag)
 								if err != nil {
-									log.Printf("getkineticswin err:%+v", err)
+									log.Warn().Msgf("getkineticswin err:%+v", err)
 									continue
 								}
 							}
@@ -114,12 +114,12 @@ func (w *LocateWorker) Task(num int) {
 							if leftRefRCOnRList > 0 && rightRefRCOnRList < readQueryLength {
 								rIPDList, err = getkineticswin(readRiList[leftRefRCOnRList:rightRefRCOnRList], scaleFlag)
 								if err != nil {
-									log.Printf("getkineticswin err:%+v", err)
+									log.Warn().Msgf("getkineticswin err:%+v", err)
 									continue
 								}
 								rPWList, err = getkineticswin(readRpList[leftRefRCOnRList:rightRefRCOnRList], scaleFlag)
 								if err != nil {
-									log.Printf("getkineticswin err:%+v", err)
+									log.Warn().Msgf("getkineticswin err:%+v", err)
 									continue
 								}
 								seqList = readSeqList[leftRefRCOnRList : rightRefRCOnRList+1]
@@ -138,12 +138,12 @@ func (w *LocateWorker) Task(num int) {
 							if leftRefRCOnFList > 0 && rightRefRCOnFList < readQueryLength {
 								rIPDList, err = getkineticswin(readFiList[leftRefRCOnFList:rightRefRCOnFList], scaleFlag)
 								if err != nil {
-									log.Printf("getkineticswin err:%+v", err)
+									log.Warn().Msgf("getkineticswin err:%+v", err)
 									continue
 								}
 								rPWList, err = getkineticswin(readFpList[leftRefRCOnFList:rightRefRCOnFList], scaleFlag)
 								if err != nil {
-									log.Printf("getkineticswin err:%+v", err)
+									log.Warn().Msgf("getkineticswin err:%+v", err)
 									continue
 								}
 								seqList = readSeqList[leftRefRCOnFList : rightRefRCOnFList+1]
@@ -158,12 +158,12 @@ func (w *LocateWorker) Task(num int) {
 							if leftRefFCOnRList > 0 && rightRefFCOnRList < readQueryLength {
 								fIPDList, err = getkineticswin(readRiList[leftRefFCOnRList:rightRefFCOnRList], scaleFlag)
 								if err != nil {
-									log.Printf("getkineticswin err:%+v", err)
+									log.Warn().Msgf("getkineticswin err:%+v", err)
 									continue
 								}
 								fPWList, err = getkineticswin(readRpList[leftRefFCOnRList:rightRefFCOnRList], scaleFlag)
 								if err != nil {
-									log.Printf("getkineticswin err:%+v", err)
+									log.Warn().Msgf("getkineticswin err:%+v", err)
 									continue
 								}
 
@@ -224,6 +224,16 @@ func getkineticswin(nums []uint8, scaleFlag bool) ([]float32, error) {
 func reverseSlice(arr []float32) []float32 {
 
 	res := make([]float32, len(arr))
+	length := len(arr)
+	for i := length - 1; i >= 0; i-- {
+		res[length-i-1] = arr[i]
+	}
+	return res
+}
+
+func reverseXReads(arr [][][]float32) [][][]float32 {
+
+	res := make([][][]float32, len(arr))
 	length := len(arr)
 	for i := length - 1; i >= 0; i-- {
 		res[length-i-1] = arr[i]

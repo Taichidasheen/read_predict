@@ -2,7 +2,7 @@ package subread
 
 import (
 	"fmt"
-	"log"
+	"github.com/rs/zerolog/log"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,14 +25,14 @@ func processRecordPositions(recordPositionDict *RecordPositionDict, recordPositi
 	for recordPos := range recordPositions {
 		chr := recordPos.RefChr
 		if _, exist := refOrderMap[chr]; !exist {
-			log.Printf("unknown chr:%s, just skip", chr)
+			log.Warn().Msgf("unknown chr:%s, just skip", chr)
 			continue
 		}
 		recordPositionDict.ChrMap[chr] = struct{}{}
 		locatedCpgs := recordPos.LocatedCpgs
 		for _, cpg := range locatedCpgs {
 			chrCpg := fmt.Sprintf("%s_%d", chr, cpg)
-			//log.Printf("count:%d, chrCpg:%s", count, chrCpg)
+			//log.Debug().Msgf("count:%d, chrCpg:%s", count, chrCpg)
 
 			recordPositionDict.CpgLocationPositions[chrCpg] = append(recordPositionDict.CpgLocationPositions[chrCpg], recordPos.CpgLocatedPosition[cpg]) //dict.CpgLocationPositions
 		}
@@ -44,12 +44,12 @@ func processRecordPositions(recordPositionDict *RecordPositionDict, recordPositi
 	}
 	sortedChrCpgs, err := sortChrCpgs(chrCpgs, refOrderMap)
 	if err != nil {
-		log.Printf("sortChrCpgs err:%v", err)
+		log.Error().Msgf("sortChrCpgs err:%v", err)
 		return nil, err
 	}
 	recordPositionDict.ChrCpgs = sortedChrCpgs
 
-	log.Printf("len(sortedChrCpgs):%d, sortedChrCpgs:%v", len(sortedChrCpgs), sortedChrCpgs)
+	log.Debug().Msgf("len(sortedChrCpgs):%d, sortedChrCpgs:%v", len(sortedChrCpgs), sortedChrCpgs)
 
 	//判断是不是可以安全的进行处理了
 	if len(recordPositionDict.ChrMap) == 1 {
@@ -61,7 +61,7 @@ func processRecordPositions(recordPositionDict *RecordPositionDict, recordPositi
 		headPos, _ := strconv.Atoi(strings.Split(headChrCpg, "_")[1])
 		tailPos, _ := strconv.Atoi(strings.Split(tailChrCpg, "_")[1])
 
-		log.Printf("headChrCpg:%s, tailChrCpg:%s, headPos:%d, tailPos:%d", headChrCpg, tailChrCpg, headPos, tailPos)
+		log.Debug().Msgf("headChrCpg:%s, tailChrCpg:%s, headPos:%d, tailPos:%d", headChrCpg, tailChrCpg, headPos, tailPos)
 
 		if tailPos-headPos > 50000 {
 			//output the top 50% of the CpG in Feature_dict
@@ -74,16 +74,16 @@ func processRecordPositions(recordPositionDict *RecordPositionDict, recordPositi
 
 			numCopied := copy(restCpgs, sortedChrCpgs[halfPos:])
 			if numCopied != restCount {
-				log.Printf("array copy wrong, restCount:%d, numCopied:%d", restCount, numCopied)
+				log.Error().Msgf("array copy wrong, restCount:%d, numCopied:%d", restCount, numCopied)
 				return nil, fmt.Errorf("array copy wrong")
 			}
 
-			log.Printf("before delete len(recordPositionDict.ChrCpgs):%d", len(recordPositionDict.ChrCpgs))
+			log.Debug().Msgf("before delete len(recordPositionDict.ChrCpgs):%d", len(recordPositionDict.ChrCpgs))
 
 			//记得从recordPositionDict中删除写出的部分
 			recordPositionDict.ChrCpgs = restCpgs
 
-			log.Printf("after delete len(recordPositionDict.ChrCpgs):%d", len(recordPositionDict.ChrCpgs))
+			log.Debug().Msgf("after delete len(recordPositionDict.ChrCpgs):%d", len(recordPositionDict.ChrCpgs))
 
 			cpgLocatedPositions := make(map[string][]*LocatedPosition)
 			for _, chrCpg := range halfcpgs {
@@ -92,7 +92,7 @@ func processRecordPositions(recordPositionDict *RecordPositionDict, recordPositi
 				delete(recordPositionDict.CpgLocationPositions, chrCpg)
 			}
 
-			log.Printf("after delete len(recordPositionDict.CpgLocationPositions):%d", len(recordPositionDict.CpgLocationPositions))
+			log.Debug().Msgf("after delete len(recordPositionDict.CpgLocationPositions):%d", len(recordPositionDict.CpgLocationPositions))
 
 			//需要写出的部分
 			topDict := &TopRecordPositionDict{
@@ -133,7 +133,7 @@ func processRecordPositions(recordPositionDict *RecordPositionDict, recordPositi
 
 		numCopied := copy(restCpgs, sortedChrCpgs[len(frontChrCpgs):])
 		if numCopied != restCount {
-			log.Printf("array copy wrong, restCount:%d, numCopied:%d", restCount, numCopied)
+			log.Error().Msgf("array copy wrong, restCount:%d, numCopied:%d", restCount, numCopied)
 			return nil, fmt.Errorf("array copy wrong")
 		}
 		//记得从recordPositionDict中删除写出的部分
@@ -147,7 +147,7 @@ func processRecordPositions(recordPositionDict *RecordPositionDict, recordPositi
 		return topDict, nil
 	}
 
-	log.Printf("no data can output now, ChrCpgs:%v", len(recordPositionDict.ChrCpgs))
+	log.Debug().Msgf("no data can output now, ChrCpgs:%v", len(recordPositionDict.ChrCpgs))
 
 	return nil, nil
 
@@ -158,7 +158,7 @@ func processFinalRecordPositions(recordPositionDict *RecordPositionDict, recordP
 	for recordPos := range recordPositions {
 		chr := recordPos.RefChr
 		if _, exist := refOrderMap[chr]; !exist {
-			log.Printf("unknown chr:%s, just skip", chr)
+			log.Error().Msgf("unknown chr:%s, just skip", chr)
 			continue
 		}
 		recordPositionDict.ChrMap[chr] = struct{}{}
@@ -176,12 +176,12 @@ func processFinalRecordPositions(recordPositionDict *RecordPositionDict, recordP
 	}
 	sortedChrCpgs, err := sortChrCpgs(chrCpgs, refOrderMap)
 	if err != nil {
-		log.Printf("sortChrCpgs err:%v", err)
+		log.Error().Msgf("sortChrCpgs err:%v", err)
 		return nil, err
 	}
 	recordPositionDict.ChrCpgs = sortedChrCpgs
 
-	log.Printf("processFinalRecordPositions sortedChrCpgs:%+v", sortedChrCpgs)
+	log.Debug().Msgf("processFinalRecordPositions sortedChrCpgs:%+v", sortedChrCpgs)
 
 	//不用再判断是否可以安全处理，需要全部输出
 

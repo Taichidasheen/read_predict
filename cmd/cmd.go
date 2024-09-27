@@ -13,11 +13,13 @@ import (
 	"github.com/biogo/hts/bam"
 	"github.com/biogo/hts/bgzf"
 	"github.com/biogo/hts/sam"
+	"github.com/rs/zerolog"
+	"runtime"
+
+	"github.com/rs/zerolog/log"
 	tf "github.com/wamuir/graft/tensorflow"
 	"io"
-	"log"
 	"os"
-	"runtime"
 	"runtime/pprof"
 	"sort"
 	"strconv"
@@ -50,6 +52,7 @@ func main() {
 	//debug param
 	var cpuprofile string
 	var topN int
+	var logLevel int
 
 	//input parameters
 	flag.StringVar(&bamFilePath, "bamfile", "", "aligned/unaligned BAM file with kinetic signals, fi/fp/ri/rp for hifi reads, and ip/pw for subreads")
@@ -74,67 +77,19 @@ func main() {
 	flag.StringVar(&chromosome, "Chromosome", "whole_genome", "processing chromosome")
 	flag.BoolVar(&scale, "Scale", false, "flag to indicate scale the signal of each subreads, (x-mean)/std. Without this tag is raw signal value")
 
-	/*
-		//input related parameters
-		flag.StringVar(&inType, "inType", "", "aligned or unaligned")
-		flag.StringVar(&bamFilePath, "bam", "", "aligned/unaligned BAM file with kinetic signals, fi/fp/ri/rp for hifi reads, and ip/pw for subreads")
-		flag.StringVar(&cpgBed, "cg", "", "CpG position, column1 is chr, column2 is pos, such as chr1 132. Here pos is 1-based coordinate on Rreference's forward strand")
-		flag.StringVar(&datatype, "type", "SUBREAD", "data mode, SUBREAD or HIFI")
-		flag.IntVar(&radius, "r", 10, "cpg +/- r")
-		flag.IntVar(&minSubreadsDepth, "min", 1, "min subreads depth (by-strand) for a ZMW to be included")
-		flag.IntVar(&maxSubreadsDepth, "max", 60, "max subreads depth (by-strand) for a ZMW to be excluded")
-		flag.IntVar(&mappingQuality, "maq", 30, "min subreads mapping quality from aligner")
-		flag.IntVar(&baseQuality, "bpq", 0, "min base quality required")
-		flag.StringVar(&chromosome, "chr", "whole_genome", "processing chromosome")
-		flag.StringVar(&modelDir, "model", "", "model dir")
-		flag.StringVar(&closedModelDir, "cmodel", "", "closed model dir")
-		flag.StringVar(&openModelDir, "omodel", "", "open model dir")
-
-		// output related parameters
-		flag.StringVar(&outPrefix, "o", "", "[*outprefix*].modification.bam for ModBam outputType.  "+
-			"[*outprefix*].Kmat.txt.gz for Feature outputType. [*outprefix*].SingleMol.pre.txt.gz for MoleculeLevel outputType")
-		flag.BoolVar(&scale, "sc", false, "flag to indicate scale the signal of each subreads, (x-mean)/std. Without this tag is raw signal value")
-		flag.StringVar(&outputType, "oe", "", "Output Types: ModBam,Feature,MoleculeLevel. ModBam: Modification Bam file. | Feature: Feature matrix. | MoleculeLevel: Molecule level modification prediction")
-		flag.StringVar(&keepK, "keepK", "remove", "remove or keep. flag to indicate keep or remove the kinetic signals in the output Bam file")
-	*/
-
 	// processing parameters
 	flag.IntVar(&processor, "Processor", 0, "Parallelism processors")
 
 	//debug parameters
 	flag.StringVar(&cpuprofile, "cpuprofile", "", "write cpu profile to this file")
 	flag.IntVar(&topN, "topN", 0, "just process top N rows")
+	flag.IntVar(&logLevel, "loglevel", 1, "0-debug,1-info,2-warn,3-error")
 
 	flag.Parse()
+	log.Output(os.Stdout)
+	zerolog.SetGlobalLevel(zerolog.Level(logLevel))
 
-	/*
-		fmt.Println("inType:", inType)
-		fmt.Println("bamFilePath:", bamFilePath)
-		fmt.Println("cpgBed:", cpgBed)
-		fmt.Println("minSubreadsDepth:", minSubreadsDepth)
-		fmt.Println("maxSubreadsDepth:", maxSubreadsDepth)
-		fmt.Println("radius:", radius)
-		fmt.Println("mappingQuality:", mappingQuality)
-		fmt.Println("baseQuality:", baseQuality)
-		fmt.Println("chromosome:", chromosome)
-		fmt.Println("processor:", processor)
-		fmt.Println("datatype:", datatype)
-		fmt.Println("modelDir:", modelDir)
-		fmt.Println("closedModelDir:", closedModelDir)
-		fmt.Println("openModelDir:", openModelDir)
-
-		fmt.Println("outPrefix:", outPrefix)
-		fmt.Println("scale:", scale)
-		fmt.Println("outputType:", outputType)
-		fmt.Println("keepK:", keepK)
-
-		fmt.Println("cpuprofile:", cpuprofile)
-		fmt.Println("topN:", topN)
-
-		fmt.Println("maxProcs:", runtime.GOMAXPROCS(0))
-
-	*/
-	//input parameters
+	/*//input parameters
 	fmt.Println("bamfile:", bamFilePath)
 	fmt.Println("InBamStatus:", inType)
 	fmt.Println("readformat:", datatype)
@@ -160,12 +115,42 @@ func main() {
 	fmt.Println("cpuprofile:", cpuprofile)
 	fmt.Println("topN:", topN)
 
-	fmt.Println("maxProcs:", runtime.GOMAXPROCS(0))
+	fmt.Println("maxProcs:", runtime.GOMAXPROCS(0))*/
+
+	//input parameters
+	log.Info().Msgf("bamfile:%v", bamFilePath)
+	log.Info().Msgf("InBamStatus:%v", inType)
+	log.Info().Msgf("readformat:%v", datatype)
+	log.Info().Msgf("outputType:%v", outputType)
+	log.Info().Msgf("outprefix:%v", outPrefix)
+	log.Info().Msgf("KeepKinetics:%v", keepK)
+
+	//ZMWmeth model files
+	log.Info().Msgf("HDir:%v", hifiModelDir)
+	log.Info().Msgf("CDir:%v", closedModelDir)
+	log.Info().Msgf("ODir:%v", openModelDir)
+
+	//control parameters
+	log.Info().Msgf("radius:%v", radius)
+	log.Info().Msgf("minsubreadsdepth:%v", minSubreadsDepth)
+	log.Info().Msgf("maxsubreadsdepth:%v", maxSubreadsDepth)
+	log.Info().Msgf("MappingQuality:%v", mappingQuality)
+	log.Info().Msgf("Processor:%v", processor)
+	log.Info().Msgf("Reference:%v", cpgBed)
+	log.Info().Msgf("Scale:%v", scale)
+	log.Info().Msgf("Chromosome:%v", chromosome)
+
+	log.Info().Msgf("cpuprofile:%v", cpuprofile)
+	log.Info().Msgf("topN:%v", topN)
+	log.Info().Msgf("loglevel:%v", logLevel)
+
+	log.Info().Msgf("maxProcs:%v", runtime.GOMAXPROCS(0))
 
 	if cpuprofile != "" {
 		f, err := os.Create(cpuprofile)
 		if err != nil {
-			log.Fatal(err)
+			log.Err(err)
+			return
 		}
 		pprof.StartCPUProfile(f)
 		defer pprof.StopCPUProfile()
@@ -214,18 +199,19 @@ func main() {
 				model, err := loadModel(hifiModelDir, []string{"serve"})
 				if err != nil {
 					log.Printf("loadModel err:%v, modelDir:%s", err, hifiModelDir)
+					return
 				}
 				log.Printf("loaded model:%v", model)
 
 				bamFile, err := os.Open(bamFilePath)
 				if err != nil {
-					log.Fatalf("could not open file %q:", err)
+					log.Error().Msgf("could not open file %q:", err)
 					return
 				}
 				defer bamFile.Close()
 				ok, err := bgzf.HasEOF(bamFile)
 				if err != nil {
-					log.Fatalf("could not open file %q:", err)
+					log.Error().Msgf("could not open file %q:", err)
 					return
 				}
 				if !ok {
@@ -237,7 +223,7 @@ func main() {
 				//bam reader
 				bamReader, err := bam.NewReader(bamFile, concurrency)
 				if err != nil {
-					log.Fatalf("could not read bam:%v", err)
+					log.Error().Msgf("could not read bam:%v", err)
 					return
 				}
 				defer bamReader.Close()
@@ -269,10 +255,10 @@ func main() {
 				//cgListMap, err := buildCgListMap(cpgBed, chromosome)
 				cgListMap, err := buildCgListMapFromFasta(cpgBed, chromosome)
 				if err != nil {
-					log.Fatalf("buildCgListMap err:%v", err)
+					log.Error().Msgf("buildCgListMap err:%v", err)
 					return
 				}
-				log.Println("len(cgListMap):", len(cgListMap))
+				log.Debug().Msgf("len(cgListMap):%d", len(cgListMap))
 
 				wg.Add(3)
 				recordChan := make(chan *sam.Record, 1000)
@@ -299,10 +285,10 @@ func main() {
 				//cgListMap, err := buildCgListMap(cpgBed, chromosome)
 				cgListMap, err := buildCgListMapFromFasta(cpgBed, chromosome)
 				if err != nil {
-					log.Fatalf("buildCgListMap err:%v", err)
+					log.Error().Msgf("buildCgListMap err:%v", err)
 					return
 				}
-				log.Println("len(cgListMap):", len(cgListMap))
+				log.Debug().Msgf("len(cgListMap):%d", len(cgListMap))
 
 				model, err := loadModel(hifiModelDir, []string{"serve"})
 				if err != nil {
@@ -312,13 +298,13 @@ func main() {
 
 				bamFile, err := os.Open(bamFilePath)
 				if err != nil {
-					log.Fatalf("could not open file %q:", err)
+					log.Error().Msgf("could not open file %q:", err)
 					return
 				}
 				defer bamFile.Close()
 				ok, err := bgzf.HasEOF(bamFile)
 				if err != nil {
-					log.Fatalf("could not open file %q:", err)
+					log.Error().Msgf("could not open file %q:", err)
 					return
 				}
 				if !ok {
@@ -330,7 +316,7 @@ func main() {
 				//bam reader
 				bamReader, err := bam.NewReader(bamFile, concurrency)
 				if err != nil {
-					log.Fatalf("could not read bam:%v", err)
+					log.Error().Msgf("could not read bam:%v", err)
 					return
 				}
 				defer bamReader.Close()
@@ -369,20 +355,20 @@ func main() {
 			//cgListMap, err := buildCgListMap(cpgBed, chromosome)
 			cgListMap, err := buildCgListMapFromFasta(cpgBed, chromosome)
 			if err != nil {
-				log.Fatalf("buildCgListMap err:%v", err)
+				log.Error().Msgf("buildCgListMap err:%v", err)
 				return
 			}
-			log.Println("len(cgListMap):", len(cgListMap))
+			log.Debug().Msgf("len(cgListMap):%d", len(cgListMap))
 
 			bamFile, err := os.Open(bamFilePath)
 			if err != nil {
-				log.Fatalf("could not open file %q:", err)
+				log.Error().Msgf("could not open file %q:", err)
 				return
 			}
 			defer bamFile.Close()
 			ok, err := bgzf.HasEOF(bamFile)
 			if err != nil {
-				log.Fatalf("could not open file %q:", err)
+				log.Error().Msgf("could not open file %q:", err)
 				return
 			}
 			if !ok {
@@ -394,7 +380,7 @@ func main() {
 			//bam reader
 			bamReader, err := bam.NewReader(bamFile, concurrency)
 			if err != nil {
-				log.Fatalf("could not read bam:%v", err)
+				log.Error().Msgf("could not read bam:%v", err)
 				return
 			}
 			defer bamReader.Close()
@@ -432,10 +418,10 @@ func main() {
 			//cgListMap, err := buildCgListMap(cpgBed, chromosome)
 			cgListMap, err := buildCgListMapFromFasta(cpgBed, chromosome)
 			if err != nil {
-				log.Fatalf("buildCgListMap err:%v", err)
+				log.Error().Msgf("buildCgListMap err:%v", err)
 				return
 			}
-			log.Println("len(cgListMap):", len(cgListMap))
+			log.Debug().Msgf("len(cgListMap):%d", len(cgListMap))
 
 			//load model
 			closedModel, err := loadModel(closedModelDir, []string{"serve"})
@@ -452,13 +438,13 @@ func main() {
 
 			bamFile, err := os.Open(bamFilePath)
 			if err != nil {
-				log.Fatalf("could not open file %q:", err)
+				log.Error().Msgf("could not open file %q:", err)
 				return
 			}
 			defer bamFile.Close()
 			ok, err := bgzf.HasEOF(bamFile)
 			if err != nil {
-				log.Fatalf("could not open file %q:", err)
+				log.Error().Msgf("could not open file %q:", err)
 				return
 			}
 			if !ok {
@@ -470,7 +456,7 @@ func main() {
 			//bam reader
 			bamReader, err := bam.NewReader(bamFile, concurrency)
 			if err != nil {
-				log.Fatalf("could not read bam:%v", err)
+				log.Error().Msgf("could not read bam:%v", err)
 				return
 			}
 			defer bamReader.Close()
@@ -510,7 +496,7 @@ func main() {
 	log.Printf("loaded model:%v", model)*/
 
 	if taskName == "" {
-		log.Println("unsupported params, no task processed")
+		log.Error().Msgf("unsupported params, no task processed")
 		return
 	} else {
 		log.Printf("begin to process task:%s", taskName)
@@ -518,20 +504,20 @@ func main() {
 
 	wg.Wait()
 
-	fmt.Println("exit...")
+	log.Info().Msgf("exit...")
 
 }
 
 func loadModel(modelPath string, modelNames []string) (*tf.SavedModel, error) {
 	model, err := tf.LoadSavedModel(modelPath, modelNames, nil) // 载入模型
 	if err != nil {
-		log.Printf("LoadSavedModel err: %v", err)
+		log.Error().Msgf("LoadSavedModel err: %v", err)
 		return nil, err
 	}
 
-	log.Println("list possible ops in graphs")
+	log.Debug().Msgf("list possible ops in graphs")
 	for _, op := range model.Graph.Operations() {
-		log.Printf("Op name: %v", op.Name())
+		log.Debug().Msgf("Op name: %v", op.Name())
 	}
 
 	return model, nil
@@ -540,14 +526,14 @@ func loadModel(modelPath string, modelNames []string) (*tf.SavedModel, error) {
 func buildCgListMap(cgFile string, processingChr string) (map[string][]int, error) {
 	start := time.Now()
 	defer func() {
-		log.Println("buildCgListMap cost:", time.Since(start))
+		log.Debug().Msgf("buildCgListMap cost:", time.Since(start))
 	}()
 
 	cgListMap := make(map[string][]int)
 	// 打开文件
 	file, err := os.Open(cgFile)
 	if err != nil {
-		log.Println("Error opening file:", err)
+		log.Error().Msgf("Error opening file:%v", err)
 		return nil, err
 	}
 	defer file.Close()
@@ -575,7 +561,7 @@ func buildCgListMap(cgFile string, processingChr string) (map[string][]int, erro
 	}
 
 	if err = scanner.Err(); err != nil {
-		log.Println("Error reading file:", err)
+		log.Error().Msgf("Error reading file:%v", err)
 		return nil, err
 	}
 	//sort
@@ -588,7 +574,7 @@ func buildCgListMap(cgFile string, processingChr string) (map[string][]int, erro
 func buildCgListMapFromFasta(cgFile string, processingChr string) (map[string][]int, error) {
 	start := time.Now()
 	defer func() {
-		log.Println("buildCgListMapFromFasta cost:", time.Since(start))
+		log.Debug().Msgf("buildCgListMapFromFasta cost:%v", time.Since(start))
 	}()
 
 	cgListMap := make(map[string][]int)
@@ -618,13 +604,13 @@ func readBam(wg *sync.WaitGroup, recordChan chan *sam.Record, bamFilePath string
 	//bamFilePath := "/storage/yangjianLab/caoyujie/project/meth/Bam_file/4_hifi_subreads/HG01109_WT_hifi/5x.sort.HG01109_WT_hifi.aln.bam"
 	bamFile, err := os.Open(bamFilePath)
 	if err != nil {
-		log.Fatalf("could not open file %q:", err)
+		log.Error().Msgf("could not open file %q:", err)
 		return
 	}
 	defer bamFile.Close()
 	ok, err := bgzf.HasEOF(bamFile)
 	if err != nil {
-		log.Fatalf("could not open file %q:", err)
+		log.Error().Msgf("could not open file %q:", err)
 		return
 	}
 	if !ok {
@@ -637,7 +623,7 @@ func readBam(wg *sync.WaitGroup, recordChan chan *sam.Record, bamFilePath string
 	//bam reader
 	bamReader, err := bam.NewReader(bamFile, concurrency)
 	if err != nil {
-		log.Fatalf("could not read bam:%v", err)
+		log.Error().Msgf("could not read bam:%v", err)
 		return
 	}
 	defer bamReader.Close()
@@ -650,7 +636,7 @@ func readBam(wg *sync.WaitGroup, recordChan chan *sam.Record, bamFilePath string
 			break
 		}
 		if err != nil {
-			log.Fatalf("error reading bam: %v", err)
+			log.Error().Msgf("error reading bam: %v", err)
 			return
 		}
 		count++
@@ -697,7 +683,7 @@ func writeTextResult(wg *sync.WaitGroup, outFile string, resultChan chan string)
 
 	file, err := os.Create(outFile)
 	if err != nil {
-		log.Fatalf("could not open file %q:", err)
+		log.Error().Msgf("could not open file %q:", err)
 		return
 	}
 	defer file.Close()
@@ -707,14 +693,14 @@ func writeTextResult(wg *sync.WaitGroup, outFile string, resultChan chan string)
 	for line := range resultChan {
 		_, err := writer.WriteString(line + "\n")
 		if err != nil {
-			log.Println("Error writing line:", err)
+			log.Error().Msgf("Error writing line:%v", err)
 			return
 		}
 	}
 	// 将缓冲区的数据刷新到文件中
 	err = writer.Flush()
 	if err != nil {
-		log.Println("Error flushing writer:", err)
+		log.Error().Msgf("Error flushing writer:%v", err)
 		return
 	}
 }
@@ -726,7 +712,7 @@ func writeGzipResult(wg *sync.WaitGroup, outPrefix string, resultChan chan strin
 
 	file, err := os.Create(resultPath)
 	if err != nil {
-		log.Fatalf("could not open file %q:", err)
+		log.Error().Msgf("could not open file %q:", err)
 		return
 	}
 	defer file.Close()
@@ -738,14 +724,14 @@ func writeGzipResult(wg *sync.WaitGroup, outPrefix string, resultChan chan strin
 	for line := range resultChan {
 		_, err := gzipWriter.Write([]byte(line + "\n"))
 		if err != nil {
-			log.Println("Error writing line:", err)
+			log.Error().Msgf("Error writing line:%v", err)
 			return
 		}
 	}
 	// 将缓冲区的数据刷新到文件中
 	err = gzipWriter.Flush()
 	if err != nil {
-		log.Println("Error flushing writer:", err)
+		log.Error().Msgf("Error flushing writer:%v", err)
 		return
 	}
 }
@@ -754,7 +740,7 @@ func writeBamRecord(wg *sync.WaitGroup, bamHeader *sam.Header, outBamPath string
 	defer wg.Done()
 	outBam, err := os.OpenFile(outBamPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
-		log.Fatalf("could not open file %q:", err)
+		log.Error().Msgf("could not open file %q:", err)
 		return
 	}
 	defer outBam.Close()
@@ -762,7 +748,7 @@ func writeBamRecord(wg *sync.WaitGroup, bamHeader *sam.Header, outBamPath string
 	//header, _ := sam.NewHeader(nil, nil)
 	bamWriter, err := bam.NewWriter(outBam, bamHeader, 5)
 	if err != nil {
-		log.Fatalf("could not write bam:%v", err)
+		log.Error().Msgf("could not write bam:%v", err)
 		return
 	}
 	defer bamWriter.Close()

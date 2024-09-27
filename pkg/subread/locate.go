@@ -5,7 +5,7 @@ import (
 	"github.com/Taichidasheen/read_predict/pkg/opt"
 	"github.com/Taichidasheen/read_predict/pkg/record_flag"
 	"github.com/biogo/hts/sam"
-	"log"
+	"github.com/rs/zerolog/log"
 )
 
 // RecordPosition 存放一个record所有命中的cpg
@@ -31,13 +31,13 @@ func FindLocatedCpgs(record *sam.Record, opts opt.Options, cgListMap map[string]
 	alnRefChr := record.Ref.Name()
 	alnRefStart := record.Pos
 	alnRefEnd := record.End()
-	log.Printf("readName:%s, alnRefStart:%d, alnRefEnd:%d", record.Name, alnRefStart, alnRefEnd)
+	log.Debug().Msgf("readName:%s, alnRefStart:%d, alnRefEnd:%d", record.Name, alnRefStart, alnRefEnd)
 	cgList := cgListMap[alnRefChr]
 
 	if !record_flag.IsSecondary(record.Flags) && !record_flag.IsSupplementary(record.Flags) && int(record.MapQ) > mappingQ && record_flag.MatchingRatio(record) >= 0.85 {
 
 		overlappingCpg := cpgpos.FindOverlappingCpg(cgList, alnRefStart, alnRefEnd)
-		//log.Printf("count:%d, overlappingCpg:%+v", count, overlappingCpg)
+		//log.Debug().Msgf("count:%d, overlappingCpg:%+v", count, overlappingCpg)
 
 		if len(overlappingCpg) >= 1 {
 			readCigar := record.Cigar
@@ -46,8 +46,8 @@ func FindLocatedCpgs(record *sam.Record, opts opt.Options, cgListMap map[string]
 			readQueryLength := len(readSeqList)
 
 			locatedCpgs, cpgPosOnSeq := cpgpos.LocateCpgPosOnSeq(alnRefStart, readCigar, overlappingCpg)
-			log.Printf("readName:%s, len(overlappingCpg):%d, len(locatedCpgs):%d", readName, len(overlappingCpg), len(locatedCpgs))
-			//log.Printf("count:%d, locatedCpgs:%+v", count, locatedCpgs)
+			log.Debug().Msgf("readName:%s, len(overlappingCpg):%d, len(locatedCpgs):%d", readName, len(overlappingCpg), len(locatedCpgs))
+			//log.Debug().Msgf("count:%d, locatedCpgs:%+v", count, locatedCpgs)
 
 			if len(locatedCpgs) >= 1 {
 				var filteredCpgs []int
@@ -57,11 +57,11 @@ func FindLocatedCpgs(record *sam.Record, opts opt.Options, cgListMap map[string]
 					//heading or tailing removing
 					posOnSeq := cpgPosOnSeq[cpg]
 					if posOnSeq < radius+5 {
-						log.Printf("posOnRead heading removing, readname:%s, posOnSeq:%d", readName, posOnSeq)
+						log.Warn().Msgf("posOnRead heading removing, readname:%s, posOnSeq:%d", readName, posOnSeq)
 						continue
 					}
 					if posOnSeq > readQueryLength-radius-5 {
-						log.Printf("posOnRead heading removing, readname:%s, posOnSeq:%d", readName, posOnSeq)
+						log.Warn().Msgf("posOnRead heading removing, readname:%s, posOnSeq:%d", readName, posOnSeq)
 						continue
 					}
 					filteredCpgs = append(filteredCpgs, cpg)

@@ -3,7 +3,7 @@ package record_tag
 import (
 	"fmt"
 	"github.com/biogo/hts/sam"
-	"log"
+	"github.com/rs/zerolog/log"
 	"strings"
 )
 
@@ -27,24 +27,24 @@ func ExtractRecordTag(record *sam.Record) (*RecordTag, error) {
 	//fn
 	fnAux, exist := record.Tag([]byte{'f', 'n'})
 	if !exist {
-		log.Printf("record fn not exist, record name:%s", record.Name)
+		log.Error().Msgf("record fn not exist, record name:%s", record.Name)
 		return nil, fmt.Errorf("fn not exist")
 	}
 	fn, ok := fnAux.Value().(int32)
 	if !ok {
-		log.Printf("record fn invalid, record name:%s", record.Name)
+		log.Error().Msgf("record fn invalid, record name:%s", record.Name)
 		return nil, fmt.Errorf("fn invalid")
 	}
 
 	//rn
 	rnAux, exist := record.Tag([]byte{'r', 'n'})
 	if !exist {
-		log.Printf("record rn not exist, record name:%s", record.Name)
+		log.Error().Msgf("record rn not exist, record name:%s", record.Name)
 		return nil, fmt.Errorf("rn not exist")
 	}
 	rn, ok := rnAux.Value().(int32)
 	if !ok {
-		log.Printf("record rn invalid, record name:%s", record.Name)
+		log.Error().Msgf("record rn invalid, record name:%s", record.Name)
 		return nil, fmt.Errorf("rn invalid")
 	}
 	fmt.Println("record name:", record.Name, "fn:", fn, " rn:", rn)
@@ -52,48 +52,48 @@ func ExtractRecordTag(record *sam.Record) (*RecordTag, error) {
 	//fi
 	fiAux, exist := record.Tag([]byte{'f', 'i'})
 	if !exist {
-		log.Printf("record fi not exist, record name:%s", record.Name)
+		log.Error().Msgf("record fi not exist, record name:%s", record.Name)
 		return nil, fmt.Errorf("fi not exist")
 	}
 	fi, ok := fiAux.Value().([]uint8)
 	if !ok {
-		log.Printf("record fi invalid, record name:%s", record.Name)
+		log.Error().Msgf("record fi invalid, record name:%s", record.Name)
 		return nil, fmt.Errorf("fi invalid")
 	}
 
 	//fp
 	fpAux, exist := record.Tag([]byte{'f', 'p'})
 	if !exist {
-		log.Printf("record fp not exist, record name:%s", record.Name)
+		log.Error().Msgf("record fp not exist, record name:%s", record.Name)
 		return nil, fmt.Errorf("fp not exist")
 	}
 	fp, ok := fpAux.Value().([]uint8)
 	if !ok {
-		log.Printf("record fp invalid, record name:%s", record.Name)
+		log.Error().Msgf("record fp invalid, record name:%s", record.Name)
 		return nil, fmt.Errorf("fp invalid")
 	}
 
 	//ri
 	riAux, exist := record.Tag([]byte{'r', 'i'})
 	if !exist {
-		log.Printf("record ri not exist, record name:%s", record.Name)
+		log.Error().Msgf("record ri not exist, record name:%s", record.Name)
 		return nil, fmt.Errorf("ri not exist")
 	}
 	ri, ok := riAux.Value().([]uint8)
 	if !ok {
-		log.Printf("record ri invalid, record name:%s", record.Name)
+		log.Error().Msgf("record ri invalid, record name:%s", record.Name)
 		return nil, fmt.Errorf("ri invalid")
 	}
 
 	//rp
 	rpAux, exist := record.Tag([]byte{'r', 'p'})
 	if !exist {
-		log.Printf("record rp not exist, record name:%s", record.Name)
+		log.Error().Msgf("record rp not exist, record name:%s", record.Name)
 		return nil, fmt.Errorf("rp not exist")
 	}
 	rp, ok := rpAux.Value().([]uint8)
 	if !ok {
-		log.Printf("record rp invalid, record name:%s", record.Name)
+		log.Error().Msgf("record rp invalid, record name:%s", record.Name)
 		return nil, fmt.Errorf("rp invalid")
 	}
 
@@ -101,12 +101,12 @@ func ExtractRecordTag(record *sam.Record) (*RecordTag, error) {
 	var HP, PS string
 	HPAux, exist := record.Tag([]byte{'H', 'P'})
 	if !exist {
-		log.Printf("record HP not exist, record name:%s", record.Name)
+		log.Error().Msgf("record HP not exist, record name:%s", record.Name)
 		HP = "X"
 	} else {
 		HPVal, ok := HPAux.Value().(int32)
 		if !ok {
-			log.Printf("record HP invalid, record name:%s", record.Name)
+			log.Error().Msgf("record HP invalid, record name:%s", record.Name)
 			return nil, fmt.Errorf("HP invalid")
 		}
 		HP = fmt.Sprintf("%d", HPVal)
@@ -114,12 +114,12 @@ func ExtractRecordTag(record *sam.Record) (*RecordTag, error) {
 
 	PSAux, exist := record.Tag([]byte{'P', 'S'})
 	if !exist {
-		log.Printf("record PS not exist, record name:%s", record.Name)
+		log.Error().Msgf("record PS not exist, record name:%s", record.Name)
 		PS = "X"
 	} else {
 		PSVal, ok := PSAux.Value().(int32)
 		if !ok {
-			log.Printf("record PS invalid, record name:%s", record.Name)
+			log.Error().Msgf("record PS invalid, record name:%s", record.Name)
 			return nil, fmt.Errorf("PS invalid")
 		}
 		PS = fmt.Sprintf("%d", PSVal)
@@ -142,24 +142,24 @@ func ExtractSubreadsRecordTag(record *sam.Record) (*RecordTag, error) {
 	//ip
 	ipAux, exist := record.Tag([]byte{'i', 'p'})
 	if !exist {
-		log.Printf("record ip not exist, record name:%s", record.Name)
+		log.Error().Msgf("record ip not exist, record name:%s", record.Name)
 		return nil, fmt.Errorf("ip not exist")
 	}
 	ip, ok := ipAux.Value().([]uint8)
 	if !ok {
-		log.Printf("record ip invalid, record name:%s", record.Name)
+		log.Error().Msgf("record ip invalid, record name:%s", record.Name)
 		return nil, fmt.Errorf("ip invalid")
 	}
 
 	//pw
 	pwAux, exist := record.Tag([]byte{'p', 'w'})
 	if !exist {
-		log.Printf("record pw not exist, record name:%s", record.Name)
+		log.Error().Msgf("record pw not exist, record name:%s", record.Name)
 		return nil, fmt.Errorf("pw not exist")
 	}
 	pw, ok := pwAux.Value().([]uint8)
 	if !ok {
-		log.Printf("record pw invalid, record name:%s", record.Name)
+		log.Error().Msgf("record pw invalid, record name:%s", record.Name)
 		return nil, fmt.Errorf("pw invalid")
 	}
 

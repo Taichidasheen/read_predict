@@ -7,8 +7,8 @@ import (
 	"github.com/Taichidasheen/read_predict/pkg/predict"
 	"github.com/Taichidasheen/read_predict/pkg/record_flag"
 	"github.com/Taichidasheen/read_predict/pkg/record_tag"
+	"github.com/rs/zerolog/log"
 	tf "github.com/wamuir/graft/tensorflow"
-	"log"
 	"strings"
 )
 
@@ -68,7 +68,7 @@ func (w *AlignedSubreadsPredictWorker) Task(num int) {
 			record := locatedPos.Record
 			recordTag, err := record_tag.ExtractSubreadsRecordTag(record)
 			if err != nil {
-				log.Printf("extractSubreadsRecordTag err:%v", err)
+				log.Warn().Msgf("extractSubreadsRecordTag err:%v", err)
 				continue
 			}
 			readIpdList := recordTag.Ip
@@ -82,7 +82,7 @@ func (w *AlignedSubreadsPredictWorker) Task(num int) {
 
 			subreadFeature, err := feature.SubRead_cpg_K_Feature(posOnSeq, readIsReverse, radius, readQueryLength, readSeqList, readIpdList, readPwList)
 			if err != nil {
-				log.Printf("SubRead_cpg_K_Feature err:%v, readName:%s, locatedPos:%v", err, readName, locatedPos)
+				log.Error().Msgf("SubRead_cpg_K_Feature err:%v, readName:%s, locatedPos:%v", err, readName, locatedPos)
 				continue
 			}
 			readQueryFeature := &feature.ReadQueryFeature{
@@ -115,14 +115,14 @@ func (w *AlignedSubreadsPredictWorker) Task(num int) {
 	if len(cpgPredictFeature.ClosedZMWX) > 0 {
 		closedProbes, err := predict.Predict(closedModel, cpgPredictFeature.ClosedZMWX)
 		if err != nil {
-			log.Printf("closed predict err:%+v, input:%+v", err, cpgPredictFeature.ClosedZMWX)
+			log.Error().Msgf("closed predict err:%+v, input:%+v", err, cpgPredictFeature.ClosedZMWX)
 			w.err = err
 			return
 		}
 		//构造输出
 		predictLine, err := formatZMWPredictLine(refChr, locatedCpg, cpgPredictFeature.ClosedNames, cpgPredictFeature.ClosedNpassesList, closedProbes, "C")
 		if err != nil {
-			log.Printf("formatZMWPredictLine err:%+v", err)
+			log.Error().Msgf("formatZMWPredictLine err:%+v", err)
 			w.err = err
 			return
 		}
@@ -133,21 +133,21 @@ func (w *AlignedSubreadsPredictWorker) Task(num int) {
 	if len(cpgPredictFeature.OpenZMWX) > 0 {
 		openProbes, err := predict.Predict(openModel, cpgPredictFeature.OpenZMWX)
 		if err != nil {
-			log.Printf("predict err:%+v, input:%+v", err, cpgPredictFeature.OpenZMWX)
+			log.Error().Msgf("predict err:%+v, input:%+v", err, cpgPredictFeature.OpenZMWX)
 			w.err = err
 			return
 		}
 		//构造输出
 		predictLine, err := formatZMWPredictLine(refChr, locatedCpg, cpgPredictFeature.OpenNames, cpgPredictFeature.OpenNpassesList, openProbes, "O")
 		if err != nil {
-			log.Printf("formatZMWPredictLine err:%+v", err)
+			log.Error().Msgf("formatZMWPredictLine err:%+v", err)
 			w.err = err
 			return
 		}
 		cpgOutput.ZMWLines = append(cpgOutput.ZMWLines, predictLine)
 	}
 
-	log.Printf("cpgOutput ref chr:%s, cpg:%d, len(zmwlines):%d", cpgOutput.Ref, cpgOutput.Cpg, len(cpgOutput.ZMWLines))
+	log.Debug().Msgf("cpgOutput ref chr:%s, cpg:%d, len(zmwlines):%d", cpgOutput.Ref, cpgOutput.Cpg, len(cpgOutput.ZMWLines))
 
 	//输出结果
 	w.cpgOutputChan <- cpgOutput
@@ -158,7 +158,7 @@ func (w *AlignedSubreadsPredictWorker) Task(num int) {
 func formatZMWPredictLine(chr string, pos int, zmwNames []string, npasses []int, probes []float32, zmwType string) (string, error) {
 
 	if len(zmwNames) != len(probes) || len(npasses) != len(probes) {
-		log.Printf("non uniform length, zmwNames:%v, npasses:%v, probes:%v", zmwNames, npasses, probes)
+		log.Error().Msgf("non uniform length, zmwNames:%v, npasses:%v, probes:%v", zmwNames, npasses, probes)
 		return "", fmt.Errorf("non uniform length")
 	}
 

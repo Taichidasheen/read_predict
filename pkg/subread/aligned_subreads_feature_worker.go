@@ -7,7 +7,7 @@ import (
 	"github.com/Taichidasheen/read_predict/pkg/record_flag"
 	"github.com/Taichidasheen/read_predict/pkg/record_tag"
 	"github.com/Taichidasheen/read_predict/pkg/util"
-	"log"
+	"github.com/rs/zerolog/log"
 	"strings"
 )
 
@@ -59,7 +59,7 @@ func (w *AlignedSubreadsFeatureWorker) Task(num int) {
 			record := locatedPos.Record
 			recordTag, err := record_tag.ExtractSubreadsRecordTag(record)
 			if err != nil {
-				log.Printf("extractSubreadsRecordTag err:%v", err)
+				log.Warn().Msgf("extractSubreadsRecordTag err:%v", err)
 				continue
 			}
 			readIpdList := recordTag.Ip
@@ -73,7 +73,7 @@ func (w *AlignedSubreadsFeatureWorker) Task(num int) {
 
 			subreadFeature, err := feature.SubRead_cpg_K_Feature(posOnSeq, readIsReverse, radius, readQueryLength, readSeqList, readIpdList, readPwList)
 			if err != nil {
-				log.Printf("SubRead_cpg_K_Feature err:%v, readName:%s, locatedPos:%v", err, readName, locatedPos)
+				log.Error().Msgf("SubRead_cpg_K_Feature err:%v, readName:%s, locatedPos:%v", err, readName, locatedPos)
 				continue
 			}
 			readQueryFeature := &feature.ReadQueryFeature{
@@ -92,7 +92,7 @@ func (w *AlignedSubreadsFeatureWorker) Task(num int) {
 		cpgOutput.ZMWLines = append(cpgOutput.ZMWLines, zmwLine)
 	}
 
-	log.Printf("cpgOutput ref chr:%s, cpg:%d, len(zmwlines):%d", cpgOutput.Ref, cpgOutput.Cpg, len(cpgOutput.ZMWLines))
+	log.Debug().Msgf("cpgOutput ref chr:%s, cpg:%d, len(zmwlines):%d", cpgOutput.Ref, cpgOutput.Cpg, len(cpgOutput.ZMWLines))
 
 	//输出结果
 	w.cpgOutputChan <- cpgOutput

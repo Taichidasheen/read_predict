@@ -10,8 +10,8 @@ import (
 	"github.com/Taichidasheen/read_predict/pkg/record_tag"
 	"github.com/Taichidasheen/read_predict/pkg/util"
 	"github.com/biogo/hts/sam"
+	"github.com/rs/zerolog/log"
 	tf "github.com/wamuir/graft/tensorflow"
-	"log"
 	"strings"
 )
 
@@ -43,10 +43,13 @@ func (w *AlignedHiFiPredictWorker) Task(num int) {
 	radius := w.opts.Radius
 	scaleFlag := w.opts.ScaleFlag
 	keepK := w.opts.KeepK
+
+	predictFlag := false //记录是否发生了predict动作
+
 	if !record_flag.IsSecondary(record.Flags) && !record_flag.IsSupplementary(record.Flags) && int(record.MapQ) > w.opts.MappingQ && record_flag.MatchingRatio(record) >= 0.85 {
 		recordTag, err := record_tag.ExtractRecordTag(record)
 		if err != nil {
-			log.Printf("extractRecordTag err:%v", err)
+			log.Error().Msgf("extractRecordTag err:%v", err)
 			w.err = err
 			return
 		}
@@ -57,10 +60,10 @@ func (w *AlignedHiFiPredictWorker) Task(num int) {
 			alnRefChr := record.Ref.Name()
 			alnRefStart := record.Pos
 			alnRefEnd := record.End()
-			log.Printf("alnRefStart:%d, alnRefEnd:%d", alnRefStart, alnRefEnd)
+			log.Debug().Msgf("alnRefStart:%d, alnRefEnd:%d", alnRefStart, alnRefEnd)
 			cgList := w.cgListMap[alnRefChr]
 			overlappingCpg := cpgpos.FindOverlappingCpg(cgList, alnRefStart, alnRefEnd)
-			log.Printf("overlappingCpg:%+v", overlappingCpg)
+			log.Debug().Msgf("overlappingCpg:%+v", overlappingCpg)
 			if len(overlappingCpg) >= 1 {
 				readFiList := recordTag.Fi
 				readFpList := recordTag.Fp
@@ -73,8 +76,8 @@ func (w *AlignedHiFiPredictWorker) Task(num int) {
 				readName := record.Name
 
 				locatedCpgs, cpgPosOnSeq := cpgpos.LocateCpgPosOnSeq(alnRefStart, readCigar, overlappingCpg)
-				log.Printf("readName:%s, len(overlappingCpg):%d, len(locatedCpgs):%d", readName, len(overlappingCpg), len(locatedCpgs))
-				log.Printf("locatedCpgs:%+v", locatedCpgs)
+				log.Debug().Msgf("readName:%s, len(overlappingCpg):%d, len(locatedCpgs):%d", readName, len(overlappingCpg), len(locatedCpgs))
+				log.Debug().Msgf("locatedCpgs:%+v", locatedCpgs)
 
 				if len(locatedCpgs) >= 1 {
 					var xReads [][][]float32
@@ -84,18 +87,18 @@ func (w *AlignedHiFiPredictWorker) Task(num int) {
 						//heading or tailing removing
 						posOnSeq := cpgPosOnSeq[cpg]
 						if posOnSeq < radius+5 {
-							log.Printf("posOnRead heading removing, readname:%s, posOnSeq:%d", readName, posOnSeq)
+							log.Warn().Msgf("posOnRead heading removing, readname:%s, posOnSeq:%d", readName, posOnSeq)
 							continue
 						}
 						if posOnSeq > readQueryLength-radius-5 {
-							log.Printf("posOnRead heading removing, readname:%s, posOnSeq:%d", readName, posOnSeq)
+							log.Warn().Msgf("posOnRead heading removing, readname:%s, posOnSeq:%d", readName, posOnSeq)
 							continue
 						}
 						//log.Printf("readName:%s, cpg:%d, posOnRead:%d", readName, cpg, posOnRead)
 
 						feat, err := feature.HiFiRead_cpg_K_Feature(posOnSeq, readIsReverse, radius, readQueryLength, readSeqList, readFiList, readFpList, readRiList, readRpList, scaleFlag)
 						if err != nil {
-							log.Printf("HiFiRead_cpg_K_Feature err:%v, read name:%s", err, record.Name)
+							log.Error().Msgf("HiFiRead_cpg_K_Feature err:%v, read name:%s", err, record.Name)
 							continue
 						}
 
@@ -105,12 +108,13 @@ func (w *AlignedHiFiPredictWorker) Task(num int) {
 						featurePosOnRef = append(featurePosOnRef, cpg)
 					}
 
-					log.Printf("readName:%s,  len(cpgPosOnSeq):%d, len(xReads):%d", record.Name, len(cpgPosOnSeq), len(xReads))
+					log.Debug().Msgf("readName:%s,  len(cpgPosOnSeq):%d, len(xReads):%d", record.Name, len(cpgPosOnSeq), len(xReads))
 
+					predictFlag = true //修改标记为需要进行predict
 					//predict
 					probes, err := predict.Predict(model, xReads)
 					if err != nil {
-						log.Printf("predict err:%+v, read name:%s, input:%+v", err, record.Name, xReads)
+						log.Error().Msgf("predict err:%+v, read name:%s, input:%+v", err, record.Name, xReads)
 						w.err = err
 						return
 					}
@@ -122,7 +126,7 @@ func (w *AlignedHiFiPredictWorker) Task(num int) {
 					if w.opts.OutputType == "ModBam" {
 						err = modBamOut(record, keepK, featurePosOnSeq, probes, w.bamResultChan)
 						if err != nil {
-							log.Printf("modBamOut err:%+v, read name:%s", err, record.Name)
+							log.Error().Msgf("modBamOut err:%+v, read name:%s", err, record.Name)
 							w.err = err
 							return
 						}
@@ -131,6 +135,18 @@ func (w *AlignedHiFiPredictWorker) Task(num int) {
 			}
 		}
 	}
+	//如果当前record没有进行predict，则去掉ML，MM tag后原样输出
+	if predictFlag == false && w.opts.OutputType == "ModBam" {
+		log.Debug().Msgf("no predict process,direct output, record name:%s", record.Name)
+		//如果原来的文件里有MM和ML，先去掉
+		record_tag.RemoveMMMLTag(record)
+		if w.opts.KeepK == "remove" {
+			record_tag.RemoveRecordTag(record)
+		}
+		//写出到channel
+		w.bamResultChan <- record
+	}
+
 }
 
 func moleculeLevelOut(record *sam.Record, recordTag *record_tag.RecordTag, featurePosOnRef []int, probes []float32, textResultChan chan string) {
@@ -168,30 +184,30 @@ func moleculeLevelOut(record *sam.Record, recordTag *record_tag.RecordTag, featu
 func modBamOut(record *sam.Record, keepK string, featurePosOnSeq []int, probes []float32, bamResultChan chan *sam.Record) error {
 	readSeqList := record.Seq.Expand()
 	readIsReverse := record_flag.IsReverse(record.Flags)
-	readQueryLength := len(readSeqList)
+	//readQueryLength := len(readSeqList)
 
 	var topStrand []byte
-	var featurePosOnRead []int
+	//var featurePosOnRead []int
 
 	// 2024-01-05: need to distinguish +- strand, since MM,ML tag is with respected to top_strand(5'->3')
 	if readIsReverse {
 		probes = util.ReverseSlice(probes)
 		topStrand = seqComplementary(util.ReverseSliceByte(readSeqList))
-		featurePosOnRead = convertPosOnSeq2PosOnReadSlice(readQueryLength, featurePosOnSeq)
+		//featurePosOnRead = convertPosOnSeq2PosOnReadSlice(readQueryLength, featurePosOnSeq)
 	} else {
 		topStrand = readSeqList
-		featurePosOnRead = featurePosOnSeq
+		//featurePosOnRead = featurePosOnSeq
 	}
 
 	//计算ML tag和MM tag
 	mlTag, err := record_tag.GenMLTag(probes)
 	if err != nil {
-		log.Printf("genMLTag err:%+v, read name:%s", err, record.Name)
+		log.Error().Msgf("genMLTag err:%+v, read name:%s", err, record.Name)
 		return err
 	}
-	mmTag, err := record_tag.GenAlignedMMTag(topStrand, featurePosOnRead)
+	mmTag, err := record_tag.GenMMTag(string(topStrand))
 	if err != nil {
-		log.Printf("genMMTag err:%+v, read name:%s", err, record.Name)
+		log.Error().Msgf("genMMTag err:%+v, read name:%s", err, record.Name)
 		return err
 	}
 	//如果原来的文件里有MM和ML，先去掉
@@ -248,7 +264,7 @@ func seqComplementary(seq []byte) []byte {
 		case 'G':
 			complementedSeq[i] = 'C'
 		default:
-			log.Println("invalid bytes:", seq[i])
+			log.Warn().Msgf("invalid bytes:%v", seq[i])
 		}
 	}
 	return complementedSeq

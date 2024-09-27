@@ -7,7 +7,7 @@ import (
 	"github.com/Taichidasheen/read_predict/pkg/record_tag"
 	"github.com/Taichidasheen/read_predict/pkg/util"
 	"github.com/biogo/hts/sam"
-	"log"
+	"github.com/rs/zerolog/log"
 	"strings"
 )
 
@@ -42,7 +42,7 @@ func (w *TopHiFiFeatureWorker) Task(num int) {
 	scaleFlag := w.opts.ScaleFlag
 	recordTag, err := record_tag.ExtractRecordTag(record)
 	if err != nil {
-		log.Printf("extractRecordTag err:%v", err)
+		log.Error().Msgf("extractRecordTag err:%v", err)
 		w.err = err
 		return
 	}
@@ -62,23 +62,23 @@ func (w *TopHiFiFeatureWorker) Task(num int) {
 		zmwname := parts[0] + "_" + parts[1]
 
 		cpgPosOnRead := findCpGPos(string(readSeqList), radius)
-		//log.Printf("readName:%s, len(cpgPosOnRead):%d", record.Name, len(cpgPosOnRead))
+		log.Debug().Msgf("readName:%s, len(cpgPosOnRead):%d", record.Name, len(cpgPosOnRead))
 		if len(cpgPosOnRead) >= 1 {
 			for _, posOnRead := range cpgPosOnRead {
 				//remove cpg at the head or tail of a read, which causing out of range index
 				if posOnRead < radius+5 {
-					log.Printf("posOnRead head remove, readname:%s, posOnRead:%d", readName, posOnRead)
+					log.Warn().Msgf("posOnRead head remove, readname:%s, posOnRead:%d", readName, posOnRead)
 					continue
 				}
 				if posOnRead > readQueryLength-radius-5 {
-					log.Printf("posOnRead tail remove, readname:%s, posOnRead:%d", readName, posOnRead)
+					log.Warn().Msgf("posOnRead tail remove, readname:%s, posOnRead:%d", readName, posOnRead)
 					continue
 				}
-				//log.Printf("readName:%s, posOnRead:%d", readName, posOnRead)
+				log.Debug().Msgf("readName:%s, posOnRead:%d", readName, posOnRead)
 
 				feat, err := feature.HiFiRead_cpg_K_Feature(posOnRead, readIsReverse, radius, readQueryLength, readSeqList, readFiList, readFpList, readRiList, readRpList, scaleFlag)
 				if err != nil {
-					log.Printf("HiFiRead_cpg_K_Feature err:%v, read name:%s", err, record.Name)
+					log.Error().Msgf("HiFiRead_cpg_K_Feature err:%v, read name:%s", err, record.Name)
 					continue
 				}
 

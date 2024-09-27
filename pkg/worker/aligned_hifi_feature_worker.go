@@ -9,7 +9,7 @@ import (
 	"github.com/Taichidasheen/read_predict/pkg/record_tag"
 	"github.com/Taichidasheen/read_predict/pkg/util"
 	"github.com/biogo/hts/sam"
-	"log"
+	"github.com/rs/zerolog/log"
 	"strings"
 )
 
@@ -38,7 +38,7 @@ func (w *AlignedHiFiFeatureWorker) Task(num int) {
 	if !record_flag.IsSecondary(record.Flags) && !record_flag.IsSupplementary(record.Flags) && int(record.MapQ) > w.opts.MappingQ && record_flag.MatchingRatio(record) >= 0.85 {
 		recordTag, err := record_tag.ExtractRecordTag(record)
 		if err != nil {
-			log.Printf("extractRecordTag err:%v", err)
+			log.Error().Msgf("extractRecordTag err:%v", err)
 			w.err = err
 			return
 		}
@@ -49,10 +49,10 @@ func (w *AlignedHiFiFeatureWorker) Task(num int) {
 			alnRefChr := record.Ref.Name()
 			alnRefStart := record.Pos
 			alnRefEnd := record.End()
-			log.Printf("alnRefStart:%d, alnRefEnd:%d", alnRefStart, alnRefEnd)
+			log.Debug().Msgf("alnRefStart:%d, alnRefEnd:%d", alnRefStart, alnRefEnd)
 			cgList := w.cgListMap[alnRefChr]
 			overlappingCpg := cpgpos.FindOverlappingCpg(cgList, alnRefStart, alnRefEnd)
-			log.Printf("overlappingCpg:%+v", overlappingCpg)
+			log.Debug().Msgf("overlappingCpg:%+v", overlappingCpg)
 			if len(overlappingCpg) >= 1 {
 				readFiList := recordTag.Fi
 				readFpList := recordTag.Fp
@@ -67,26 +67,26 @@ func (w *AlignedHiFiFeatureWorker) Task(num int) {
 				zmwname := parts[0] + "_" + parts[1]
 
 				locatedCpgs, cpgPosOnRead := cpgpos.LocateCpgPosOnSeq(alnRefStart, readCigar, overlappingCpg)
-				log.Printf("readName:%s, len(overlappingCpg):%d, len(locatedCpgs):%d", readName, len(overlappingCpg), len(locatedCpgs))
-				log.Printf("locatedCpgs:%+v", locatedCpgs)
+				log.Debug().Msgf("readName:%s, len(overlappingCpg):%d, len(locatedCpgs):%d", readName, len(overlappingCpg), len(locatedCpgs))
+				log.Debug().Msgf("locatedCpgs:%+v", locatedCpgs)
 
 				if len(locatedCpgs) >= 1 {
 					for _, cpg := range locatedCpgs {
 						//heading or tailing removing
 						posOnRead := cpgPosOnRead[cpg]
 						if posOnRead < radius+5 {
-							log.Printf("posOnRead heading removing, readname:%s, posOnRead:%d", readName, posOnRead)
+							log.Warn().Msgf("posOnRead heading removing, readname:%s, posOnRead:%d", readName, posOnRead)
 							continue
 						}
 						if posOnRead > readQueryLength-radius-5 {
-							log.Printf("posOnRead heading removing, readname:%s, posOnRead:%d", readName, posOnRead)
+							log.Warn().Msgf("posOnRead heading removing, readname:%s, posOnRead:%d", readName, posOnRead)
 							continue
 						}
 						//log.Printf("readName:%s, cpg:%d, posOnRead:%d", readName, cpg, posOnRead)
 
 						feat, err := feature.HiFiRead_cpg_K_Feature(posOnRead, readIsReverse, radius, readQueryLength, readSeqList, readFiList, readFpList, readRiList, readRpList, scaleFlag)
 						if err != nil {
-							log.Printf("HiFiRead_cpg_K_Feature err:%v, read name:%s", err, record.Name)
+							log.Error().Msgf("HiFiRead_cpg_K_Feature err:%v, read name:%s", err, record.Name)
 							continue
 						}
 
