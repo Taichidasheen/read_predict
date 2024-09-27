@@ -48,8 +48,10 @@ func HiFiRead_cpg_K_Feature(posOnSeq int, readIsReverse bool, radius int, readQu
 		//For subreads mapped to Ref_R_strand, which carrying information when syn the complementary F_strand, key 'F' #
 		//information is stored in fi, fp tags
 		refFCOnFList := readQueryLength - posOnSeq - 1
-		leftRefFCOnFList := refFCOnFList - radius - 1
-		rightRefFCOnFList := refFCOnFList + radius
+		//leftRefFCOnFList := refFCOnFList - radius - 1
+		//rightRefFCOnFList := refFCOnFList + radius
+		leftRefFCOnFList := refFCOnFList - radius
+		rightRefFCOnFList := refFCOnFList + radius + 1
 		if leftRefFCOnFList > 0 && rightRefFCOnFList < readQueryLength {
 			templateIPDList, err = getkineticswinQuick(readFiList[leftRefFCOnFList:rightRefFCOnFList], scaleFlag)
 			if err != nil {
@@ -69,8 +71,10 @@ func HiFiRead_cpg_K_Feature(posOnSeq int, readIsReverse bool, radius int, readQu
 		//For subreads mapped to Ref_F_strand, which carrying information when syn the complementary R_strand, key 'R' #
 		//information is stored in ri, rp tags
 		refRCOnRList := posOnSeq + 1
-		leftRefRCOnRList := refRCOnRList - radius
-		rightRefRCOnRList := refRCOnRList + radius + 1
+		//leftRefRCOnRList := refRCOnRList - radius
+		//rightRefRCOnRList := refRCOnRList + radius + 1
+		leftRefRCOnRList := refRCOnRList - radius - 1
+		rightRefRCOnRList := refRCOnRList + radius
 		if leftRefRCOnRList > 0 && rightRefRCOnRList < readQueryLength {
 			comTemplateIPDList, err = getkineticswinQuick(readRiList[leftRefRCOnRList:rightRefRCOnRList], scaleFlag)
 			if err != nil {
@@ -82,7 +86,7 @@ func HiFiRead_cpg_K_Feature(posOnSeq int, readIsReverse bool, radius int, readQu
 				log.Printf("getkineticswin err:%+v", err)
 				return nil, err
 			}
-			comTemplateSeq = seqComplementary(readSeqList[leftRefRCOnRList:rightRefRCOnRList])
+			comTemplateSeq = seqComplementary(readSeqList[leftRefRCOnRList+1 : rightRefRCOnRList+1])
 			comTemplateIPDList = util.ReverseSlice(comTemplateIPDList)
 			comTemplatePWList = util.ReverseSlice(comTemplatePWList)
 		}
