@@ -46,13 +46,23 @@ func (w *AlignedHiFiPredictWorker) Task(num int) {
 
 	predictFlag := false //记录是否发生了predict动作
 
-	if !record_flag.IsSecondary(record.Flags) && !record_flag.IsSupplementary(record.Flags) && int(record.MapQ) > w.opts.MappingQ && record_flag.MatchingRatio(record) >= 0.85 {
+	/*if record.Name == "m64285e_230606_121242/55968029/ccs" {
+		log.Warn().Msgf("m64285e_230606_121242_55968029 before filter")
+		//log.Warn().Msgf("record:%+v", record)
+		log.Warn().Msgf("m64285e_230606_121242_55968029 secondary:%v", record_flag.IsSecondary(record.Flags))
+		log.Warn().Msgf("m64285e_230606_121242_55968029 IsSupplementary:%v", record_flag.IsSupplementary(record.Flags))
+		log.Warn().Msgf("m64285e_230606_121242_55968029 record.MapQ:%v, w.opts.MappingQ:%v", record.MapQ, w.opts.MappingQ)
+		log.Warn().Msgf("m64285e_230606_121242_55968029 MatchingRatio:%v", record_flag.MatchingRatio(record))
+	}*/
+
+	if !record_flag.IsSecondary(record.Flags) && !record_flag.IsSupplementary(record.Flags) && int(record.MapQ) >= w.opts.MappingQ && record_flag.MatchingRatio(record) >= 0.85 {
 		recordTag, err := record_tag.ExtractRecordTag(record)
 		if err != nil {
 			log.Error().Msgf("extractRecordTag err:%v", err)
 			w.err = err
 			return
 		}
+
 		fn := recordTag.Fn
 		rn := recordTag.Rn
 		totalSubreadsDep := fn + rn
@@ -60,10 +70,10 @@ func (w *AlignedHiFiPredictWorker) Task(num int) {
 			alnRefChr := record.Ref.Name()
 			alnRefStart := record.Pos
 			alnRefEnd := record.End()
-			log.Debug().Msgf("alnRefStart:%d, alnRefEnd:%d", alnRefStart, alnRefEnd)
+			log.Debug().Msgf("readName:%s, alnRefStart:%d, alnRefEnd:%d", record.Name, alnRefStart, alnRefEnd)
 			cgList := w.cgListMap[alnRefChr]
 			overlappingCpg := cpgpos.FindOverlappingCpg(cgList, alnRefStart, alnRefEnd)
-			log.Debug().Msgf("overlappingCpg:%+v", overlappingCpg)
+			log.Debug().Msgf("readName:%s, overlappingCpg:%+v", record.Name, overlappingCpg)
 			if len(overlappingCpg) >= 1 {
 				readFiList := recordTag.Fi
 				readFpList := recordTag.Fp
@@ -77,7 +87,7 @@ func (w *AlignedHiFiPredictWorker) Task(num int) {
 
 				locatedCpgs, cpgPosOnSeq := cpgpos.LocateCpgPosOnSeq(alnRefStart, readCigar, overlappingCpg)
 				log.Debug().Msgf("readName:%s, len(overlappingCpg):%d, len(locatedCpgs):%d", readName, len(overlappingCpg), len(locatedCpgs))
-				log.Debug().Msgf("locatedCpgs:%+v", locatedCpgs)
+				log.Debug().Msgf("readName:%s, locatedCpgs:%+v", readName, locatedCpgs)
 
 				if len(locatedCpgs) >= 1 {
 					var xReads [][][]float32

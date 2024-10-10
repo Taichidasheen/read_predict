@@ -47,7 +47,7 @@ func ExtractRecordTag(record *sam.Record) (*RecordTag, error) {
 		log.Error().Msgf("record rn invalid, record name:%s", record.Name)
 		return nil, fmt.Errorf("rn invalid")
 	}
-	fmt.Println("record name:", record.Name, "fn:", fn, " rn:", rn)
+	//fmt.Println("record name:", record.Name, "fn:", fn, " rn:", rn)
 
 	//fi
 	fiAux, exist := record.Tag([]byte{'f', 'i'})

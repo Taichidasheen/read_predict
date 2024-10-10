@@ -78,7 +78,28 @@ func LocateCpgPosOnSeq(alnRefStart int, readCigar sam.Cigar, overlappingCpg []in
 				//	log.Printf("cpgBeginIdx:%d, refWalkingPosStart:%d, refWalkingPosEnd:%d", cpgBeginIdx, refWalkingPosStart, refWalkingPosEnd)
 				//	log.Printf("mathcedCpgs:%v, nextIdx:%d", matchedCpgs, nextIdx)
 				//}
-				if nextIdx > len(overlappingCpg) {
+
+				//if alnRefStart == 10770114 {
+				//	log.Printf("cpgBeginIdx:%d, refWalkingPosStart:%d, refWalkingPosEnd:%d", cpgBeginIdx, refWalkingPosStart, refWalkingPosEnd)
+				//	log.Printf("mathcedCpgs:%v, nextIdx:%d", matchedCpgs, nextIdx)
+				//}
+
+				cpgBeginIdx = nextIdx
+				for _, cpg := range matchedCpgs {
+					lastOpNeeded := cpg - refWalkingPosStart
+					if op == sam.CigarMatch || op == sam.CigarInsertion || op == sam.CigarSoftClipped ||
+						op == sam.CigarEqual || op == sam.CigarMismatch {
+						seqPos := seqPosBlkStart + lastOpNeeded
+						cpgPosOnSeq[cpg] = seqPos - 1
+						locatedCpgs = append(locatedCpgs, cpg)
+					}
+				}
+				if nextIdx >= len(overlappingCpg) {
+					//对比结束
+					return locatedCpgs, cpgPosOnSeq
+				}
+
+				/*if nextIdx > len(overlappingCpg) {
 					//对比结束
 					return locatedCpgs, cpgPosOnSeq
 				} else {
@@ -92,7 +113,7 @@ func LocateCpgPosOnSeq(alnRefStart int, readCigar sam.Cigar, overlappingCpg []in
 							locatedCpgs = append(locatedCpgs, cpg)
 						}
 					}
-				}
+				}*/
 			}
 		}
 	}

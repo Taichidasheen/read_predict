@@ -233,6 +233,7 @@ func getkineticswinQuick(nums []uint8, scaleFlag bool) ([]float32, error) {
 	}
 	std = math.Sqrt(std / arrLen)
 	if std == 0 {
+		//log.Printf("std is zero, nums:%+v", nums)
 		return nil, fmt.Errorf("std is zero")
 	}
 	kwin := make([]float32, len(nums))
