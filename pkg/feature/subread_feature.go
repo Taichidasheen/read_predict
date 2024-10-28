@@ -5,7 +5,6 @@ import (
 	"github.com/Taichidasheen/read_predict/pkg/util"
 	"log"
 	"math"
-	"math/rand"
 )
 
 type SubReadFeature struct {
@@ -176,7 +175,7 @@ func getCCS(seqs [][]byte) []byte {
 				maxCountBase = append(maxCountBase, element)
 			}
 		}
-		var cBase byte
+		/*var cBase byte
 		if len(maxCountBase) > 1 {
 			//随机选择一个base
 			idx := rand.Intn(len(maxCountBase))
@@ -184,10 +183,29 @@ func getCCS(seqs [][]byte) []byte {
 		}
 		if len(maxCountBase) == 1 {
 			cBase = maxCountBase[0]
-		}
+		}*/
+		//去掉随机逻辑，按照ATCG的顺序进行选择
+		cBase := selectBaseByOrder(maxCountBase)
 		cSeq[col] = cBase
 	}
 	return cSeq
+}
+
+var baseOrderMap = map[byte]int{
+	'A': 4,
+	'T': 3,
+	'C': 2,
+	'G': 1,
+}
+
+func selectBaseByOrder(maxCountBase []byte) byte {
+	selectedBase := maxCountBase[0]
+	for _, base := range maxCountBase {
+		if baseOrderMap[base] > baseOrderMap[selectedBase] {
+			selectedBase = base
+		}
+	}
+	return selectedBase
 }
 
 func getColumnsAverage(matrix [][]uint8) []float32 {

@@ -14,3 +14,14 @@ func Test_getCCS(t *testing.T) {
 	cseq := getCCS(seqs)
 	t.Logf("cseq:%s", string(cseq))
 }
+
+func Test_selectBaseByOrder(t *testing.T) {
+	//maxCountBase := []byte{'T', 'C', 'G', 'A'}
+	//maxCountBase := []byte{'C', 'T'}
+	maxCountBase := []byte{'G', 'C', 'T', 'A'}
+
+	base := selectBaseByOrder(maxCountBase)
+
+	t.Logf("base:%v", base)
+
+}

@@ -101,7 +101,7 @@ func ExtractRecordTag(record *sam.Record) (*RecordTag, error) {
 	var HP, PS string
 	HPAux, exist := record.Tag([]byte{'H', 'P'})
 	if !exist {
-		log.Error().Msgf("record HP not exist, record name:%s", record.Name)
+		//log.Error().Msgf("record HP not exist, record name:%s", record.Name)
 		HP = "X"
 	} else {
 		HPVal, ok := HPAux.Value().(int32)
@@ -114,7 +114,7 @@ func ExtractRecordTag(record *sam.Record) (*RecordTag, error) {
 
 	PSAux, exist := record.Tag([]byte{'P', 'S'})
 	if !exist {
-		log.Error().Msgf("record PS not exist, record name:%s", record.Name)
+		//log.Error().Msgf("record PS not exist, record name:%s", record.Name)
 		PS = "X"
 	} else {
 		PSVal, ok := PSAux.Value().(int32)
@@ -201,9 +201,14 @@ func GenAlignedMMTag(topStrand []byte, featurePosOnRead []int) (sam.Aux, error) 
 	var mmArr []string
 
 	//注意：这里是len(featurePos)-1,如果是len(featurePos)可能会数组越界
-	for i := 0; i < len(featurePosOnRead)-1; i++ {
-		start := featurePosOnRead[i]
-		end := featurePosOnRead[i+1]
+	for i := 0; i < len(featurePosOnRead); i++ {
+		var start int
+		if i == 0 {
+			start = 0
+		} else {
+			start = featurePosOnRead[i-1] + 1
+		}
+		end := featurePosOnRead[i]
 		countC := 0
 
 		for j := start; j < end; j++ {
@@ -211,7 +216,7 @@ func GenAlignedMMTag(topStrand []byte, featurePosOnRead []int) (sam.Aux, error) 
 				countC++
 			}
 		}
-		mmArr = append(mmArr, fmt.Sprintf("%d", countC-1))
+		mmArr = append(mmArr, fmt.Sprintf("%d", countC))
 	}
 	mmVal := "C+m," + strings.Join(mmArr, ",") + ";"
 	return sam.NewAux(sam.NewTag("MM"), mmVal)

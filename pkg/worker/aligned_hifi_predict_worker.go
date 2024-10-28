@@ -215,7 +215,8 @@ func modBamOut(record *sam.Record, keepK string, featurePosOnSeq []int, probes [
 		log.Error().Msgf("genMLTag err:%+v, read name:%s", err, record.Name)
 		return err
 	}
-	mmTag, err := record_tag.GenMMTag(string(topStrand))
+	//mmTag, err := record_tag.GenMMTag(string(topStrand))
+	mmTag, err := record_tag.GenAlignedMMTag(topStrand, featurePosOnSeq)
 	if err != nil {
 		log.Error().Msgf("genMMTag err:%+v, read name:%s", err, record.Name)
 		return err

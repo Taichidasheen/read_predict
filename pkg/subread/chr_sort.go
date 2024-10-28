@@ -20,7 +20,7 @@ func sortChrCpgs(chrCpgs []string, refOrderMap map[string]int) ([]string, error)
 
 	//先转成map
 	for _, chrCpg := range chrCpgs {
-		parts := strings.Split(chrCpg, "_")
+		parts := strings.Split(chrCpg, "->")
 		if len(parts) != 2 {
 			return nil, fmt.Errorf("invalid chrCpg:%s", chrCpg)
 		}
@@ -55,7 +55,7 @@ func sortChrCpgs(chrCpgs []string, refOrderMap map[string]int) ([]string, error)
 	})
 
 	for _, comChrCpg := range comChrCpgs {
-		chrCpg := fmt.Sprintf("%s_%d", comChrCpg.Chr, comChrCpg.Cpg)
+		chrCpg := fmt.Sprintf("%s->%d", comChrCpg.Chr, comChrCpg.Cpg)
 		res = append(res, chrCpg)
 	}
 	return res, nil

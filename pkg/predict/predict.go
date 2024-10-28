@@ -4,16 +4,15 @@ import (
 	"fmt"
 	tf "github.com/wamuir/graft/tensorflow"
 	"log"
-	"time"
 )
 
 func Predict(model *tf.SavedModel, inputData interface{}) ([]float32, error) {
 	//log.Printf("model:%+v", model)
 	//log.Printf("inputData:%v", inputData)
-	start := time.Now()
+	/*start := time.Now()
 	defer func() {
 		log.Println("predict cost:", time.Since(start))
-	}()
+	}()*/
 
 	tensor, err := tf.NewTensor(inputData)
 	if err != nil {

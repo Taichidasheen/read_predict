@@ -193,7 +193,7 @@ func main() {
 				//bamHeader := bamReader.Header()
 				//go writeBamRecord(&wg, bamHeader, outPrefix, predictResultChan)
 			}
-			if outputType == "MoleculeLevel" {
+			if outputType == "ModBam" {
 				taskName = datatype + "_" + inType + "_" + outputType
 
 				model, err := loadModel(hifiModelDir, []string{"serve"})

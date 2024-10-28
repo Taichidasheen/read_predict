@@ -65,6 +65,7 @@ func (w *TopHiFiPredictWorker) Task(num int) {
 		readQueryLength := len(readSeqList)
 
 		cpgPosOnRead := findCpGPos(string(readSeqList), radius)
+		var filteredCpgPosOnRead []int
 		//log.Debug().Msgf("readName:%s, len(cpgPosOnRead):%d", record.Name, len(cpgPosOnRead))
 		if len(cpgPosOnRead) >= 1 {
 			var xReads [][][]float32
@@ -94,11 +95,13 @@ func (w *TopHiFiPredictWorker) Task(num int) {
 				//}
 				mat := feature.FormatTransposedClosedZMW(feat, float32(totalSubreadsDep))
 				xReads = append(xReads, mat)
+				filteredCpgPosOnRead = append(filteredCpgPosOnRead, posOnRead)
 			}
 			//input := transpose3D(xReads)
 			//transpose3D(xReads)
 			//log.Debug().Msgf("readName:%s, constructPredictInput cost:%v", record.Name, time.Since(start))
-			log.Debug().Msgf("readName:%s,  len(cpgPosOnRead):%d, len(xReads):%d", record.Name, len(cpgPosOnRead), len(xReads))
+			log.Debug().Msgf("readName:%s,  len(cpgPosOnRead):%d, len(filteredCpgPosOnRead):%d, len(xReads):%d",
+				record.Name, len(cpgPosOnRead), len(filteredCpgPosOnRead), len(xReads))
 			predictFlag = true //修改标记为需要进行predict
 			//predict
 			probes, err := predict.Predict(model, xReads)
@@ -114,7 +117,8 @@ func (w *TopHiFiPredictWorker) Task(num int) {
 				w.err = err
 				return
 			}
-			mmTag, err := record_tag.GenMMTag(string(readSeqList))
+			//mmTag, err := record_tag.GenMMTag(string(readSeqList))
+			mmTag, err := record_tag.GenAlignedMMTag(readSeqList, filteredCpgPosOnRead)
 			if err != nil {
 				log.Error().Msgf("genMMTag err:%+v, read name:%s", err, record.Name)
 				w.err = err

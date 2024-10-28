@@ -31,7 +31,7 @@ func processRecordPositions(recordPositionDict *RecordPositionDict, recordPositi
 		recordPositionDict.ChrMap[chr] = struct{}{}
 		locatedCpgs := recordPos.LocatedCpgs
 		for _, cpg := range locatedCpgs {
-			chrCpg := fmt.Sprintf("%s_%d", chr, cpg)
+			chrCpg := fmt.Sprintf("%s->%d", chr, cpg)
 			//log.Debug().Msgf("count:%d, chrCpg:%s", count, chrCpg)
 
 			recordPositionDict.CpgLocationPositions[chrCpg] = append(recordPositionDict.CpgLocationPositions[chrCpg], recordPos.CpgLocatedPosition[cpg]) //dict.CpgLocationPositions
@@ -58,8 +58,8 @@ func processRecordPositions(recordPositionDict *RecordPositionDict, recordPositi
 		tailChrCpg := sortedChrCpgs[len(sortedChrCpgs)-1]
 
 		//注意：这里没有检查split后的结果和err，因为前面sortChrCpgs方法已经检查过了
-		headPos, _ := strconv.Atoi(strings.Split(headChrCpg, "_")[1])
-		tailPos, _ := strconv.Atoi(strings.Split(tailChrCpg, "_")[1])
+		headPos, _ := strconv.Atoi(strings.Split(headChrCpg, "->")[1])
+		tailPos, _ := strconv.Atoi(strings.Split(tailChrCpg, "->")[1])
 
 		log.Debug().Msgf("headChrCpg:%s, tailChrCpg:%s, headPos:%d, tailPos:%d", headChrCpg, tailChrCpg, headPos, tailPos)
 
@@ -107,13 +107,16 @@ func processRecordPositions(recordPositionDict *RecordPositionDict, recordPositi
 	if len(recordPositionDict.ChrMap) > 1 {
 
 		lastChrCpg := sortedChrCpgs[len(sortedChrCpgs)-1]
-		lastChr := strings.Split(lastChrCpg, "_")[0]
+		lastChr := strings.Split(lastChrCpg, "->")[0]
+
+		log.Debug().Msgf("recordPositionDict.ChrMap > 1, len(ChrMap):%d, len(sortedChrCpgs):%d", len(recordPositionDict.ChrMap), len(sortedChrCpgs))
+		log.Debug().Msgf("recordPositionDict.ChrMap > 1, top cpg:%s, last cpg:%s", sortedChrCpgs[0], lastChrCpg)
 
 		var frontChrCpgs []string
 		cpgLocatedPositions := make(map[string][]*LocatedPosition)
 		outputChr := make(map[string]interface{}) //记录下写出的chr，用于删除recordPositionDict.ChrMap
 		for _, chrCpg := range sortedChrCpgs {
-			chr := strings.Split(chrCpg, "_")[0]
+			chr := strings.Split(chrCpg, "->")[0]
 			if chr == lastChr {
 				break
 			}
@@ -165,7 +168,7 @@ func processFinalRecordPositions(recordPositionDict *RecordPositionDict, recordP
 		locatedCpgs := recordPos.LocatedCpgs
 
 		for _, cpg := range locatedCpgs {
-			chrCpg := fmt.Sprintf("%s_%d", chr, cpg)
+			chrCpg := fmt.Sprintf("%s->%d", chr, cpg)
 			recordPositionDict.CpgLocationPositions[chrCpg] = append(recordPositionDict.CpgLocationPositions[chrCpg], recordPos.CpgLocatedPosition[cpg]) //dict.CpgLocationPositions
 		}
 	}
