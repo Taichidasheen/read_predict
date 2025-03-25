@@ -83,7 +83,7 @@ func main() {
 	//debug parameters
 	flag.StringVar(&cpuprofile, "cpuprofile", "", "write cpu profile to this file")
 	flag.IntVar(&topN, "topN", 0, "just process top N rows")
-	flag.IntVar(&logLevel, "loglevel", 1, "0-debug,1-info,2-warn,3-error")
+	flag.IntVar(&logLevel, "loglevel", 3, "0-debug,1-info,2-warn,3-error")
 
 	flag.Parse()
 	log.Output(os.Stdout)
