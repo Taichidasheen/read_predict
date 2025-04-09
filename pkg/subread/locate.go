@@ -34,7 +34,7 @@ func FindLocatedCpgs(record *sam.Record, opts opt.Options, cgListMap map[string]
 	log.Debug().Msgf("readName:%s, alnRefStart:%d, alnRefEnd:%d", record.Name, alnRefStart, alnRefEnd)
 	cgList := cgListMap[alnRefChr]
 
-	if !record_flag.IsSecondary(record.Flags) && !record_flag.IsSupplementary(record.Flags) && int(record.MapQ) > mappingQ && record_flag.MatchingRatio(record) >= 0.85 {
+	if !record_flag.IsSecondary(record.Flags) && !record_flag.IsSupplementary(record.Flags) && int(record.MapQ) > mappingQ && record_flag.MatchingRatio(record) >= 0.1 {
 
 		overlappingCpg := cpgpos.FindOverlappingCpg(cgList, alnRefStart, alnRefEnd)
 		//log.Debug().Msgf("count:%d, overlappingCpg:%+v", count, overlappingCpg)

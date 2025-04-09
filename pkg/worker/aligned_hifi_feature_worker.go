@@ -35,7 +35,7 @@ func (w *AlignedHiFiFeatureWorker) Task(num int) {
 	record := w.record
 	radius := w.opts.Radius
 	scaleFlag := w.opts.ScaleFlag
-	if !record_flag.IsSecondary(record.Flags) && !record_flag.IsSupplementary(record.Flags) && int(record.MapQ) > w.opts.MappingQ && record_flag.MatchingRatio(record) >= 0.85 {
+	if !record_flag.IsSecondary(record.Flags) && !record_flag.IsSupplementary(record.Flags) && int(record.MapQ) > w.opts.MappingQ && record_flag.MatchingRatio(record) >= 0.1 {
 		recordTag, err := record_tag.ExtractRecordTag(record)
 		if err != nil {
 			log.Error().Msgf("extractRecordTag err:%v", err)

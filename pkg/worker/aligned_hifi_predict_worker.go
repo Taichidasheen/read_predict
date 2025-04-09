@@ -55,7 +55,7 @@ func (w *AlignedHiFiPredictWorker) Task(num int) {
 		log.Warn().Msgf("m64285e_230606_121242_55968029 MatchingRatio:%v", record_flag.MatchingRatio(record))
 	}*/
 
-	if !record_flag.IsSecondary(record.Flags) && !record_flag.IsSupplementary(record.Flags) && int(record.MapQ) >= w.opts.MappingQ && record_flag.MatchingRatio(record) >= 0.85 {
+	if !record_flag.IsSecondary(record.Flags) && !record_flag.IsSupplementary(record.Flags) && int(record.MapQ) >= w.opts.MappingQ && record_flag.MatchingRatio(record) >= 0.1 {
 		recordTag, err := record_tag.ExtractRecordTag(record)
 		if err != nil {
 			log.Error().Msgf("extractRecordTag err:%v", err)
